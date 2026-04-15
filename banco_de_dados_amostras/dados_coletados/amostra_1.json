@@ -1,0 +1,30 @@
+[
+    {
+        "id": 1,
+        "valor_bruto": 14.0
+    },
+    {
+        "id": 2,
+        "valor_bruto": 12.0
+    },
+    {
+        "id": 3,
+        "valor_bruto": 3.0
+    },
+    {
+        "id": 4,
+        "valor_bruto": 2.0
+    },
+    {
+        "id": 5,
+        "valor_bruto": 25.0
+    },
+    {
+        "id": 6,
+        "valor_bruto": 7.0
+    },
+    {
+        "media": 10.5,
+        "desvio_padrao": 7.8049
+    }
+]
