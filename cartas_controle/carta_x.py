@@ -3,6 +3,9 @@ import matplotlib.pyplot as plt
 import json
 import os
 from fpdf import FPDF
+import matplotlib
+matplotlib.use('Agg') # Define o backend para gerar arquivos sem precisar de interface gráfica
+import matplotlib.pyplot as plt
 
 def carta_x():
     print("--- Gerando Relatório PDF e Carta de Controle ---\n")
