@@ -32,7 +32,7 @@ def endpoint_pdf():
             os.makedirs(PASTA_RELATORIOS)
         
         # Executa a sua lógica de cálculo e geração de gráfico
-        Carta_x.carta_x()
+        Carta_x
         
         # O nome do arquivo deve ser o mesmo que você definiu na função carta_x
         caminho_pdf = os.path.join(PASTA_RELATORIOS, "relatorio_completo_x.pdf")
