@@ -1,6 +1,5 @@
 from amostras import data_processor
 from cartas_controle import carta_x
-
 def main():
     opção = input("Escolha sua opção: 1 - XR, 2 - P, 3 - U, 4 - IMR, 5 - Sair: ").strip()
     
@@ -8,6 +7,7 @@ def main():
         case '1':
             print("\nAnalisando dados aleatórios...")
             carta_x.carta_x()
+            return f'Carta de Controle X gerada com sucesso.'
         
         case '2':
             print("\nColetando seus próprios dados...")
