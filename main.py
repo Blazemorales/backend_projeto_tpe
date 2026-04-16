@@ -18,7 +18,7 @@ PASTA_RELATORIOS = os.path.join(BASE_DIR, 'relatorios')
 def home():
     return jsonify({
         "status": "online",
-        "projeto": "CPE - Controle de Processos Eletronica FGA",
+        "projeto": "CPE - Controle Estatístico de Processo, by João Morais",
         "endpoints": {
             "gerar_pdf": "/gerar-pdf"
         }
