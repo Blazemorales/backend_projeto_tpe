@@ -6,7 +6,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 # Importa a função do seu arquivo data_processor.py
-from cartas_controle import Carta_x 
+from cartas_controle import main
 
 app = Flask(__name__)
 
@@ -32,7 +32,8 @@ def endpoint_pdf():
             os.makedirs(PASTA_RELATORIOS)
         
         # Executa a sua lógica de cálculo e geração de gráfico
-        Carta_x
+        from cartas_controle.main import Main
+        Main.main()  # Chama a função principal
         
         # O nome do arquivo deve ser o mesmo que você definiu na função carta_x
         caminho_pdf = os.path.join(PASTA_RELATORIOS, "relatorio_completo_x.pdf")
