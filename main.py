@@ -1,8 +1,8 @@
-from amostras import data_collector_x
+from amostras import data_processor
 from cartas_controle import carta_x
 
 def main():
-    opção = input("Escolha sua opção: 1 - Analisar dados aleatórios, 2 - Coletar seus próprios dados, 3 - Sair: ").strip()
+    opção = input("Escolha sua opção: 1 - XR, 2 - P, 3 - U, 4 - IMR, 5 - Sair: ").strip()
     
     match opção:
         case '1':
@@ -11,7 +11,7 @@ def main():
         
         case '2':
             print("\nColetando seus próprios dados...")
-            coletor = data_collector_x.BancoDeDadosProcesso()
+            coletor = data_processor.BancoDeDadosProcesso()
             coletor.gerador_banco_de_dados()
         
         case '3':

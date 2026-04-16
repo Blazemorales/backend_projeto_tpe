@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 from .Kalman import Kalman
+from .amostras import DataProcessor
+
 def carta_x():
     print("--- Carta de Controle X com Média das Médias das Amostras ---\n")
 
