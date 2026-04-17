@@ -142,6 +142,91 @@ class Cartas:
         
         if os.path.exists(temp_img): os.remove(temp_img)
         print(f"✓ Relatório gerado: {caminho_pdf}")
+    
+    @staticmethod
+    def carta_r():
+        print("--- Gerando Relatório PDF e Carta de Controle R (Amplitude) ---\n")
+
+        # --- Configuração de Caminhos ---
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        caminho_base = os.path.join(os.path.dirname(script_dir), 'banco_de_dados')
+        caminho_destino = os.path.join(os.path.dirname(script_dir), 'relatorios')
+
+        if not os.path.exists(caminho_destino):
+            os.makedirs(caminho_destino)
+
+        caminho_estatisticas = os.path.join(caminho_base, 'estatisticas_individuais.json')
+
+        if not os.path.exists(caminho_estatisticas):
+            print(f"Erro: Arquivo {caminho_estatisticas} não encontrado.")
+            return
+
+        with open(caminho_estatisticas, 'r', encoding='utf-8') as f:
+            dados_processados = json.load(f)
+
+        nomes_amostras = [str(item['amostra']) for item in dados_processados]
+        amplitudes = [item.get('amplitude', 0) for item in dados_processados]
+        n_pontos = len(amplitudes)
+
+        # --- Cálculos da Carta R ---
+        r_bar = np.mean(amplitudes)
+        
+        # Nota: Em um sistema completo, d2 e d3 viriam do calculod3.obter_d3()
+        # Para os limites LSC_r e LIC_r, usamos D4*R_bar e D3*R_bar
+        # Aqui, como exemplo para n=5 (comum em seus scripts):
+        d2, d3 = 2.326, 0.864 
+        D4 = 1 + 3*(d3/d2)
+        D3 = max(0, 1 - 3*(d3/d2))
+
+        lsc_r = r_bar * D4
+        lic_r = r_bar * D3
+
+        # --- Verificação de Regra Simples (Ponto fora do limite) ---
+        fora_de_controle = any(r > lsc_r or r < lic_r for r in amplitudes)
+        status_r = "ALERTA: Variabilidade instável detectada!" if fora_de_controle else "Variabilidade sob controle."
+
+        # --- Geração do Gráfico R ---
+        plt.figure(figsize=(10, 5))
+        plt.plot(range(1, n_pontos + 1), amplitudes, 'ro-', linewidth=2, label='Amplitude (R)')
+        plt.axhline(r_bar, color='green', label=f'R-médio: {r_bar:.2f}')
+        plt.axhline(lsc_r, color='darkred', linestyle='--', label=f'LSC_r: {lsc_r:.2f}')
+        plt.axhline(lic_r, color='darkred', linestyle='--', label=f'LIC_r: {lic_r:.2f}')
+
+        plt.title("Carta de Controle R (Amplitude)")
+        plt.xlabel("Amostra")
+        plt.ylabel("Amplitude")
+        plt.xticks(range(1, n_pontos + 1), nomes_amostras)
+        plt.legend(loc='upper right')
+        plt.grid(True, alpha=0.3)
+
+        temp_img_r = os.path.join(caminho_destino, "temp_chart_r.png")
+        plt.savefig(temp_img_r, bbox_inches='tight', dpi=100)
+        plt.close()
+
+        # --- Geração do PDF R ---
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("helvetica", 'B', 16)
+        pdf.cell(190, 10, "Relatório de Qualidade - Carta R (Amplitude)", ln=True, align='C')
+        pdf.ln(10)
+
+        pdf.set_font("helvetica", 'B', 12)
+        if fora_de_controle: pdf.set_text_color(255, 0, 0)
+        pdf.cell(190, 8, f"Status da Variabilidade: {status_r}", ln=True)
+        pdf.set_text_color(0, 0, 0)
+        
+        pdf.set_font("helvetica", '', 11)
+        pdf.cell(190, 7, f"Amplitude Média (R-bar): {r_bar:.4f}", ln=True)
+        pdf.cell(190, 7, f"LSC: {lsc_r:.4f} / LIC: {lic_r:.4f}", ln=True)
+        pdf.ln(5)
+
+        pdf.image(temp_img_r, x=15, w=170)
+        
+        caminho_pdf_r = os.path.join(caminho_destino, "relatorio_carta_r.pdf")
+        pdf.output(caminho_pdf_r)
+        
+        if os.path.exists(temp_img_r): os.remove(temp_img_r)
+        print(f"✓ Carta R gerada com sucesso: {caminho_pdf_r}")
 
 if __name__ == "__main__":
     Cartas.carta_x()
