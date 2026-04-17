@@ -16,52 +16,82 @@ def home():
     return jsonify({
         "status": "online",
         "projeto": "CPE - Controle Estatístico de Processo",
-        "autor": "João Morais",
         "endpoints": {
-            "gerar_pdf_x": "/gerarpdfx",
-            "gerar_pdf_r": "/gerarpdfr"
+            "processar": "/processar",
+            "relatorio_xr": "/relatorio/xr",
+            "relatorio_p": "/relatorio/p",
+            "relatorio_u": "/relatorio/u",
+            "relatorio_imr": "/relatorio/imr"
         }
     })
 
-@app.route('/gerarpdfx', methods=['GET'])
-def endpoint_pdf_x():
+@app.route('/processar', methods=['GET'])
+def processar():
+    """Processa dados brutos e gera todos os relatórios."""
     try:
-        # Importação tardia (Lazy Import) para evitar erros de path no startup
         from cartas_controle.main import Main
-        
-        # Executa a lógica que gera os arquivos JSON e o PDF
+        if Main.executar_completo():
+            return jsonify({"status": "sucesso", "message": "Dados processados e relatórios gerados"}), 200
+        else:
+            return jsonify({"status": "erro", "message": "Falha ao processar dados"}), 500
+    except Exception as e:
+        return jsonify({"status": "erro", "message": str(e)}), 500
+
+@app.route('/relatorio/xr', methods=['GET'])
+def relatorio_xr():
+    """Retorna relatório XR."""
+    try:
+        from cartas_controle.main import Main
         Main.x()
-        
-        # O nome deve bater exatamente com o que está definido em Cartas.py
-        caminho_pdf = os.path.join(PASTA_RELATORIOS, "relatorio_completo_x.pdf")
-        
+        caminho_pdf = os.path.join(PASTA_RELATORIOS, "relatorio_XR.pdf")
         if os.path.exists(caminho_pdf):
             return send_file(caminho_pdf, as_attachment=True)
-        else:
-            return jsonify({"error": f"PDF não encontrado no servidor."}), 404
-            
+        return jsonify({"error": "PDF XR não encontrado"}), 404
     except Exception as e:
-        return jsonify({"error": f"Erro interno: {str(e)}"}), 500
-    
-@app.route('/gerarpdfr', methods=['GET'])
-def endpoint_pdf_r():
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/relatorio/p', methods=['GET'])
+def relatorio_p():
+    """Retorna relatório P."""
     try:
-        # Importação tardia (Lazy Import) para evitar erros de path no startup
+        # Assegura que os dados tratados existam gerando o índice se necessário
         from cartas_controle.main import Main
-        
-        # Executa a lógica que gera os arquivos JSON e o PDF
-        Main.r() 
-        
-        # O nome deve bater exatamente com o que está definido em Cartas.py
-        caminho_pdf = os.path.join(PASTA_RELATORIOS, "relatorio_carta_r.pdf")
-        
+        Main.processar_dados()
+        # Tenta gerar o relatório P
+        Main.p()
+        caminho_pdf = os.path.join(PASTA_RELATORIOS, "relatorio_P.pdf")
         if os.path.exists(caminho_pdf):
             return send_file(caminho_pdf, as_attachment=True)
-        else:
-            return jsonify({"error": f"PDF não encontrado no servidor."}), 404
-            
+        return jsonify({"error": "PDF P não encontrado"}), 404
     except Exception as e:
-        return jsonify({"error": f"Erro interno: {str(e)}"}), 500
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/relatorio/u', methods=['GET'])
+def relatorio_u():
+    """Retorna relatório U."""
+    try:
+        # Assegura que os dados tratados existam gerando o índice se necessário
+        from cartas_controle.main import Main
+        Main.processar_dados()
+        # Tenta gerar o relatório U
+        Main.u()
+        caminho_pdf = os.path.join(PASTA_RELATORIOS, "relatorio_U.pdf")
+        if os.path.exists(caminho_pdf):
+            return send_file(caminho_pdf, as_attachment=True)
+        return jsonify({"error": "PDF U não encontrado"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/relatorio/imr', methods=['GET'])
+def relatorio_imr():
+    """Retorna relatório IMR."""
+    try:
+        caminho_pdf = os.path.join(PASTA_RELATORIOS, "relatorio_IMR.pdf")
+        if os.path.exists(caminho_pdf):
+            return send_file(caminho_pdf, as_attachment=True)
+        return jsonify({"error": "PDF IMR não encontrado"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))

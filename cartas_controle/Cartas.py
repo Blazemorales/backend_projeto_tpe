@@ -4,229 +4,387 @@ import json
 import os
 from fpdf import FPDF
 import matplotlib
+from scipy.stats import norm
 
 matplotlib.use('Agg')
 
 class Cartas:
+
     @staticmethod
-    def carta_x():
-        print("--- Gerando Relatório PDF e Carta de Controle ---\n")
-
-        # --- Configuração de Caminhos ---
+    def obter_caminhos():
+        """Define os caminhos baseados na estrutura de pastas."""
+        # Define raiz do projeto de forma confiável
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        caminho_base = os.path.join(os.path.dirname(script_dir), 'banco_de_dados')
-        caminho_destino = os.path.join(os.path.dirname(script_dir), 'relatorios')
-
-        if not os.path.exists(caminho_destino):
-            os.makedirs(caminho_destino)
-
-        arquivos_alvo = ['estatisticas_individuais.json', 'estatisticas.json']
-        caminho_estatisticas = next((os.path.join(caminho_base, f) for f in arquivos_alvo 
-                                   if os.path.exists(os.path.join(caminho_base, f))), None)
-
-        if not caminho_estatisticas:
-            print(f"Erro: Nenhum arquivo encontrado em {caminho_base}.")
-            return
-
-        with open(caminho_estatisticas, 'r', encoding='utf-8') as f:
-            dados_processados = json.load(f)
-
-        nomes_amostras = [str(item['amostra']) for item in dados_processados]
-        medias_amostras = [item.get('media', item.get('media da amostra')) for item in dados_processados]
-        n = len(medias_amostras)
-
-        # --- Cálculos da Carta X ---
-        media_das_medias = np.mean(medias_amostras)
-        sigma = np.std(medias_amostras, ddof=1)
-        lsc, lic = media_das_medias + 3*sigma, media_das_medias - 3*sigma
-
-        # --- Verificação de Regras de Controle ---
-        condicoes = {
-            "regra1": any(m > lsc or m < lic for m in medias_amostras),
-            "regra2": False, # 2 de 3 pontos além de 2 sigma
-            "regra3": False, # 4 de 5 pontos além de 1 sigma
-            "regra4": False  # 8 pontos consecutivos do mesmo lado da média
-        }
-
-        # Verificação Regra 2 (2 de 3 consecutivos > 2 sigma)
-        for i in range(n - 2):
-            janela = medias_amostras[i:i+3]
-            if sum(1 for x in janela if x > (media_das_medias + 2*sigma) or x < (media_das_medias - 2*sigma)) >= 2:
-                condicoes["regra2"] = True
-
-        # Verificação Regra 3 (4 de 5 consecutivos > 1 sigma)
-        for i in range(n - 4):
-            janela = medias_amostras[i:i+5]
-            if sum(1 for x in janela if x > (media_das_medias + sigma) or x < (media_das_medias - sigma)) >= 4:
-                condicoes["regra3"] = True
-
-        # Verificação Regra 4 (8 consecutivos do mesmo lado)
-        cont_acima = 0
-        cont_abaixo = 0
-        for m in medias_amostras:
-            if m > media_das_medias:
-                cont_acima += 1
-                cont_abaixo = 0
-            else:
-                cont_abaixo += 1
-                cont_acima = 0
-            if cont_acima >= 8 or cont_abaixo >= 8:
-                condicoes["regra4"] = True
-
-        # Definição da Mensagem de Status
-        if all(condicoes.values()):
-            status_processo = "ALERTA CRÍTICO: Todas as condições de falha foram atingidas. Convém reavaliar o processo e considerar ações corretivas imediatas."
-        elif any(condicoes.values()):
-            status_processo = "Atenção: O processo apresenta instabilidades (pontos fora de controle detectados)."
-        else:
-            status_processo = "Processo sob controle: Todos os pontos seguem as normas estatísticas."
-
-        # --- Geração do Gráfico ---
-        plt.figure(figsize=(10, 5))
-        plt.plot(range(1, n + 1), medias_amostras, 'bo-', linewidth=2, label='Média das Amostras')
-        plt.axhline(media_das_medias, color='green', label=f'X_médio: {media_das_medias:.2f}')
-        plt.axhline(lsc, color='red', linestyle='--', label=f'LSC: {lsc:.2f}')
-        plt.axhline(lic, color='red', linestyle='--', label=f'LIC: {lic:.2f}')
+        raiz_projeto = os.path.dirname(script_dir)
         
-        # Sombreamento das zonas de sigma para clareza visual
-        plt.fill_between(range(1, n+1), media_das_medias + 2*sigma, lsc, color='red', alpha=0.1)
-        plt.fill_between(range(1, n+1), lic, media_das_medias - 2*sigma, color='red', alpha=0.1)
+        caminho_dados_tratados = os.path.join(raiz_projeto, 'banco_de_dados_tratados')
+        caminho_relatorios = os.path.join(raiz_projeto, 'relatorios')
+        
+        if not os.path.exists(caminho_relatorios):
+            os.makedirs(caminho_relatorios)
+            print(f"✓ Pasta criada: {caminho_relatorios}")
+            
+        return caminho_dados_tratados, caminho_relatorios
 
-        plt.title("Carta de Controle X")
-        plt.xticks(range(1, n + 1), nomes_amostras)
-        plt.legend(loc='upper right')
-        plt.grid(True, alpha=0.3)
+    @staticmethod
+    def carregar_dados_tratados():
+        """Carrega os dados tratados do índice."""
+        caminho_dados, _ = Cartas.obter_caminhos()
+        caminho_indice = os.path.join(caminho_dados, 'indice_dados.json')
+        
+        if not os.path.exists(caminho_indice):
+            print(f"✗ Arquivo {caminho_indice} não encontrado")
+            return None
+        
+        with open(caminho_indice, 'r', encoding='utf-8') as f:
+            dados = json.load(f)
+        return dados if isinstance(dados, list) else [dados]
 
-        temp_img = os.path.join(caminho_destino, "temp_chart.png")
-        plt.savefig(temp_img, bbox_inches='tight', dpi=100)
-        plt.close()
-
-        # --- Geração do PDF ---
+    @staticmethod
+    def gerar_pdf_basico(titulo, caminho_img, nome_arquivo_pdf, info_extra=""):
+        """Gera PDF genérico com gráfico e informações."""
+        _, caminho_relatorios = Cartas.obter_caminhos()
         pdf = FPDF()
         pdf.add_page()
-        pdf.set_font("helvetica", 'B', 16)
-        pdf.cell(190, 10, "Relatório de Qualidade - Carta de Controle", ln=True, align='C')
+        pdf.set_font("Arial", 'B', 16)
+        pdf.cell(190, 10, titulo, ln=True, align='C')
         pdf.ln(10)
-
-        # Status do Processo (O que você pediu)
-        pdf.set_font("helvetica", 'B', 12)
-        if all(condicoes.values()):
-            pdf.set_text_color(255, 0, 0) # Texto em Vermelho se estiver crítico
-        pdf.multi_cell(190, 8, f"Status: {status_processo}")
-        pdf.set_text_color(0, 0, 0) # Volta para preto
-        pdf.ln(5)
-
-        # Resumo
-        pdf.set_font("helvetica", '', 11)
-        pdf.cell(190, 7, f"Média Geral: {media_das_medias:.4f}", ln=True)
-        pdf.cell(190, 7, f"LSC: {lsc:.4f} / LIC: {lic:.4f}", ln=True)
-        pdf.ln(5)
-
-        # Gráfico e Tabela
-        pdf.image(temp_img, x=15, w=170)
-        pdf.ln(5)
+        pdf.set_font("Arial", '', 11)
         
-        pdf.set_font("helvetica", 'B', 10)
-        pdf.cell(40, 8, "Amostra", 1)
-        pdf.cell(50, 8, "Média", 1)
-        pdf.ln()
-
-        pdf.set_font("helvetica", '', 10)
-        for i in range(n):
-            pdf.cell(40, 7, nomes_amostras[i], 1)
-            pdf.cell(50, 7, f"{medias_amostras[i]:.4f}", 1)
-            pdf.ln()
-
-        caminho_pdf = os.path.join(caminho_destino, "relatorio_completo_x.pdf")
-        pdf.output(caminho_pdf)
+        if info_extra:
+            pdf.multi_cell(190, 6, info_extra)
+            pdf.ln(5)
         
-        if os.path.exists(temp_img): os.remove(temp_img)
-        print(f"✓ Relatório gerado: {caminho_pdf}")
+        if os.path.exists(caminho_img):
+            pdf.image(caminho_img, x=10, w=180)
+        
+        caminho_final = os.path.join(caminho_relatorios, nome_arquivo_pdf)
+        pdf.output(caminho_final)
+        print(f"✓ PDF gerado: {caminho_final}")
+
+
+    @staticmethod
+    def carta_xr(dados_xr=None):
+        """Calcula e plota a carta XR (Médias e Amplitudes)."""
+        if dados_xr is None:
+            # Carregar dados tratados
+            todos_dados = Cartas.carregar_dados_tratados()
+            if not todos_dados:
+                return False
+            # Encontrar dados XR
+            dados_xr = next((d for d in todos_dados if d.get("chart") == "XR"), None)
+            if not dados_xr:
+                print("✗ Nenhum dado XR encontrado")
+                return False
+        
+        stats = dados_xr.get("estatisticas_por_amostra", [])
+        medias = [s["media"] for s in stats]
+        amplitudes = [s["amplitude"] for s in stats]
+        ids = [s["amostra"] for s in stats]
+        
+        x_double_bar = dados_xr["x_double_bar"]
+        sigma = dados_xr["sigma"]
+        r_bar = dados_xr["r_bar"]
+        lsc_r = dados_xr["lsc_r"]
+        lic_r = dados_xr["lic_r"]
+        
+        # --- Gráfico X (Médias) ---
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+        
+        # Carta X
+        ax1.plot(ids, medias, 'bo-', linewidth=2, markersize=8, label='Média')
+        ax1.axhline(x_double_bar, color='green', linestyle='-', linewidth=2, label='X-barra')
+        ax1.axhline(x_double_bar + 3*sigma, color='red', linestyle='--', linewidth=2, label='LSC')
+        ax1.axhline(x_double_bar - 3*sigma, color='red', linestyle='--', linewidth=2, label='LIC')
+        ax1.set_title("Carta de Controle X-Bar (Médias)", fontsize=14, fontweight='bold')
+        ax1.set_xlabel("Amostra")
+        ax1.set_ylabel("Valor")
+        ax1.legend(loc='upper right')
+        ax1.grid(True, alpha=0.3)
+        
+        # Carta R
+        ax2.plot(ids, amplitudes, 'ro-', linewidth=2, markersize=8, label='Amplitude (R)')
+        ax2.axhline(r_bar, color='green', linestyle='-', linewidth=2, label='R-barra')
+        ax2.axhline(lsc_r, color='red', linestyle='--', linewidth=2, label='LSC_R')
+        ax2.axhline(lic_r, color='red', linestyle='--', linewidth=2, label='LIC_R')
+        ax2.set_title("Carta de Controle R (Amplitude)", fontsize=14, fontweight='bold')
+        ax2.set_xlabel("Amostra")
+        ax2.set_ylabel("Amplitude")
+        ax2.legend(loc='upper right')
+        ax2.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        
+        _, caminho_relatorios = Cartas.obter_caminhos()
+        temp_img = os.path.join(caminho_relatorios, "tmp_xr.png")
+        plt.savefig(temp_img, dpi=100, bbox_inches='tight')
+        plt.close()
+        
+        info = f"""Resumo da Analise XR:
+
+Media das Medias (X-barra-barra): {x_double_bar:.4f}
+Amplitude Media (R-barra): {r_bar:.4f}
+Desvio Padrao (sigma): {sigma:.4f}
+
+Limites de Controle X:
+  LSC = {x_double_bar + 3*sigma:.4f}
+  LIC = {x_double_bar - 3*sigma:.4f}
+
+Limites de Controle R:
+  LSC_R = {lsc_r:.4f}
+  LIC_R = {lic_r:.4f}
+
+Tamanho de amostra (n): {dados_xr['n_amostra']}
+Numero de amostras: {len(ids)}"""
+        
+        Cartas.gerar_pdf_basico("Relatorio de Controle - Carta XR", temp_img, "relatorio_XR.pdf", info)
+        if os.path.exists(temp_img):
+            os.remove(temp_img)
+        return True
     
     @staticmethod
-    def carta_r():
-        print("--- Gerando Relatório PDF e Carta de Controle R (Amplitude) ---\n")
-
-        # --- Configuração de Caminhos ---
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        caminho_base = os.path.join(os.path.dirname(script_dir), 'banco_de_dados')
-        caminho_destino = os.path.join(os.path.dirname(script_dir), 'relatorios')
-
-        if not os.path.exists(caminho_destino):
-            os.makedirs(caminho_destino)
-
-        caminho_estatisticas = os.path.join(caminho_base, 'estatisticas_individuais.json')
-
-        if not os.path.exists(caminho_estatisticas):
-            print(f"Erro: Arquivo {caminho_estatisticas} não encontrado.")
-            return
-
-        with open(caminho_estatisticas, 'r', encoding='utf-8') as f:
-            dados_processados = json.load(f)
-
-        nomes_amostras = [str(item['amostra']) for item in dados_processados]
-        amplitudes = [item.get('amplitude', 0) for item in dados_processados]
-        n_pontos = len(amplitudes)
-
-        # --- Cálculos da Carta R ---
-        r_bar = np.mean(amplitudes)
+    def carta_p(dados_p=None):
+        """Calcula e plota a carta P (Proporção de Defeituosos)."""
+        if dados_p is None:
+            todos_dados = Cartas.carregar_dados_tratados()
+            if not todos_dados:
+                # Gerar PDF placeholder informando ausência de dados
+                _, caminho_relatorios = Cartas.obter_caminhos()
+                info = "Nenhum dado tratado para carta P foi encontrado. Forneca um arquivo bruto com Chart='P'."
+                Cartas.gerar_pdf_basico("Relatorio Carta P - Vazio", "", "relatorio_P.pdf", info)
+                print("⚠️ PDF placeholder para P gerado (sem dados)")
+                return True
+            dados_p = next((d for d in todos_dados if d.get("chart") == "P"), None)
+            if not dados_p:
+                _, caminho_relatorios = Cartas.obter_caminhos()
+                info = "Nenhum dado tratado para carta P foi encontrado. Forneca um arquivo bruto com Chart='P'."
+                Cartas.gerar_pdf_basico("Relatorio Carta P - Vazio", "", "relatorio_P.pdf", info)
+                print("⚠️ PDF placeholder para P gerado (sem dados)")
+                return True
         
-        # Nota: Em um sistema completo, d2 e d3 viriam do calculod3.obter_d3()
-        # Para os limites LSC_r e LIC_r, usamos D4*R_bar e D3*R_bar
-        # Aqui, como exemplo para n=5 (comum em seus scripts):
-        d2, d3 = 2.326, 0.864 
-        D4 = 1 + 3*(d3/d2)
-        D3 = max(0, 1 - 3*(d3/d2))
-
-        lsc_r = r_bar * D4
-        lic_r = r_bar * D3
-
-        # --- Verificação de Regra Simples (Ponto fora do limite) ---
-        fora_de_controle = any(r > lsc_r or r < lic_r for r in amplitudes)
-        status_r = "ALERTA: Variabilidade instável detectada!" if fora_de_controle else "Variabilidade sob controle."
-
-        # --- Geração do Gráfico R ---
-        plt.figure(figsize=(10, 5))
-        plt.plot(range(1, n_pontos + 1), amplitudes, 'ro-', linewidth=2, label='Amplitude (R)')
-        plt.axhline(r_bar, color='green', label=f'R-médio: {r_bar:.2f}')
-        plt.axhline(lsc_r, color='darkred', linestyle='--', label=f'LSC_r: {lsc_r:.2f}')
-        plt.axhline(lic_r, color='darkred', linestyle='--', label=f'LIC_r: {lic_r:.2f}')
-
-        plt.title("Carta de Controle R (Amplitude)")
+        proporcoes = dados_p.get("proporcoes", [])
+        P_bar = dados_p["P_bar"]
+        lsc_P = dados_p["lsc_P"]
+        lic_P = dados_p["lic_P"]
+        N = dados_p["N"]
+        
+        ids = [str(i+1) for i in range(len(proporcoes))]
+        
+        plt.figure(figsize=(12, 6))
+        plt.plot(ids, proporcoes, 'go-', linewidth=2, markersize=8, label='Proporção')
+        plt.axhline(P_bar, color='blue', linestyle='-', linewidth=2, label='P-barra')
+        plt.axhline(lsc_P, color='red', linestyle='--', linewidth=2, label='LSC')
+        plt.axhline(lic_P, color='red', linestyle='--', linewidth=2, label='LIC')
+        plt.title("Carta de Controle P (Proporção de Defeituosos)", fontsize=14, fontweight='bold')
         plt.xlabel("Amostra")
-        plt.ylabel("Amplitude")
-        plt.xticks(range(1, n_pontos + 1), nomes_amostras)
+        plt.ylabel("Proporção de Defeituosos")
         plt.legend(loc='upper right')
         plt.grid(True, alpha=0.3)
-
-        temp_img_r = os.path.join(caminho_destino, "temp_chart_r.png")
-        plt.savefig(temp_img_r, bbox_inches='tight', dpi=100)
+        
+        _, caminho_relatorios = Cartas.obter_caminhos()
+        temp_img = os.path.join(caminho_relatorios, "tmp_p.png")
+        plt.savefig(temp_img, dpi=100, bbox_inches='tight')
         plt.close()
 
-        # --- Geração do PDF R ---
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("helvetica", 'B', 16)
-        pdf.cell(190, 10, "Relatório de Qualidade - Carta R (Amplitude)", ln=True, align='C')
-        pdf.ln(10)
+        info = f"""Resumo da Analise P:
 
-        pdf.set_font("helvetica", 'B', 12)
-        if fora_de_controle: pdf.set_text_color(255, 0, 0)
-        pdf.cell(190, 8, f"Status da Variabilidade: {status_r}", ln=True)
-        pdf.set_text_color(0, 0, 0)
-        
-        pdf.set_font("helvetica", '', 11)
-        pdf.cell(190, 7, f"Amplitude Média (R-bar): {r_bar:.4f}", ln=True)
-        pdf.cell(190, 7, f"LSC: {lsc_r:.4f} / LIC: {lic_r:.4f}", ln=True)
-        pdf.ln(5)
+    Proporção Media (P-barra): {P_bar:.6f}
+    Proporção (P): {dados_p.get('P', 0.0):.6f}
+    Total de Defeitos (D): {dados_p.get('total_defeitos', 'N/A')}
+    Tamanho do Lote (N): {N}
 
-        pdf.image(temp_img_r, x=15, w=170)
-        
-        caminho_pdf_r = os.path.join(caminho_destino, "relatorio_carta_r.pdf")
-        pdf.output(caminho_pdf_r)
-        
-        if os.path.exists(temp_img_r): os.remove(temp_img_r)
-        print(f"✓ Carta R gerada com sucesso: {caminho_pdf_r}")
+    Limites de Controle:
+      LSC = {lsc_P:.6f}
+      LIC = {lic_P:.6f}
 
-if __name__ == "__main__":
-    Cartas.carta_x()
+    Desvio Padrao: {dados_p.get('desvio_padrao_p', 0.0):.6f}
+    Numero de amostras: {len(proporcoes)}"""
+
+        Cartas.gerar_pdf_basico("Relatorio de Controle - Carta P", temp_img, "relatorio_P.pdf", info)
+        if os.path.exists(temp_img):
+            os.remove(temp_img)
+        return True
+    
+    @staticmethod
+    def carta_u(dados_u=None):
+        """Calcula e plota a carta U (Defeitos por Unidade)."""
+        if dados_u is None:
+            todos_dados = Cartas.carregar_dados_tratados()
+            if not todos_dados:
+                # Gerar PDF placeholder informando ausência de dados
+                _, caminho_relatorios = Cartas.obter_caminhos()
+                info = "Nenhum dado tratado para carta U foi encontrado. Forneca um arquivo bruto com Chart='U'."
+                Cartas.gerar_pdf_basico("Relatorio Carta U - Vazio", "", "relatorio_U.pdf", info)
+                print("⚠️ PDF placeholder para U gerado (sem dados)")
+                return True
+            dados_u = next((d for d in todos_dados if d.get("chart") == "U"), None)
+            if not dados_u:
+                _, caminho_relatorios = Cartas.obter_caminhos()
+                info = "Nenhum dado tratado para carta U foi encontrado. Forneca um arquivo bruto com Chart='U'."
+                Cartas.gerar_pdf_basico("Relatorio Carta U - Vazio", "", "relatorio_U.pdf", info)
+                print("⚠️ PDF placeholder para U gerado (sem dados)")
+                return True
+        
+        u_valores = dados_u.get("u_valores", [])
+        U_bar = dados_u["U_bar"]
+        lsc_u = dados_u["lsc_u"]
+        lic_u = dados_u["lic_u"]
+        n = dados_u["n"]
+        
+        ids = [str(i+1) for i in range(len(u_valores))]
+        
+        plt.figure(figsize=(12, 6))
+        plt.plot(ids, u_valores, 'mo-', linewidth=2, markersize=8, label='u (Defeitos/Unidade)')
+        plt.axhline(U_bar, color='blue', linestyle='-', linewidth=2, label='U-barra')
+        plt.axhline(lsc_u, color='red', linestyle='--', linewidth=2, label='LSC')
+        plt.axhline(lic_u, color='red', linestyle='--', linewidth=2, label='LIC')
+        plt.title("Carta de Controle U (Defeitos por Unidade)", fontsize=14, fontweight='bold')
+        plt.xlabel("Amostra")
+        plt.ylabel("Defeitos por Unidade")
+        plt.legend(loc='upper right')
+        plt.grid(True, alpha=0.3)
+        
+        _, caminho_relatorios = Cartas.obter_caminhos()
+        temp_img = os.path.join(caminho_relatorios, "tmp_u.png")
+        plt.savefig(temp_img, dpi=100, bbox_inches='tight')
+        plt.close()
+
+        info = f"""Resumo da Analise U:
+
+    Media de Defeitos por Unidade (U-barra): {U_bar:.6f}
+    Defeitos por Unidade (U): {dados_u.get('U', 0.0):.6f}
+    Total de Defeitos (C): {dados_u.get('total_defeitos', 'N/A')}
+    Numero de Unidades (n): {n}
+
+    Limites de Controle:
+      LSC = {lsc_u:.6f}
+      LIC = {lic_u:.6f}
+
+    Desvio Padrao: {dados_u.get('desvio_padrao_u', 0.0):.6f}
+    Numero de amostras: {len(u_valores)}"""
+
+        Cartas.gerar_pdf_basico("Relatorio de Controle - Carta U", temp_img, "relatorio_U.pdf", info)
+        if os.path.exists(temp_img):
+            os.remove(temp_img)
+        return True
+    
+    @staticmethod
+    def carta_imr(dados_imr=None):
+        """Calcula e plota a carta IMR (Individuals and Moving Range)."""
+        if dados_imr is None:
+            todos_dados = Cartas.carregar_dados_tratados()
+            if not todos_dados:
+                return False
+            dados_imr = next((d for d in todos_dados if d.get("chart") == "IMR"), None)
+            if not dados_imr:
+                print("✗ Nenhum dado IMR encontrado")
+                return False
+        
+        valores_ind = dados_imr.get("valores_individuais", [])
+        mr_values = dados_imr.get("mr_values", [])
+        media_ind = dados_imr["media_ind"]
+        lsc_ind = dados_imr["lsc_ind"]
+        lic_ind = dados_imr["lic_ind"]
+        mr_bar = dados_imr["mr_bar"]
+        lsc_mr = dados_imr["lsc_mr"]
+        lic_mr = dados_imr["lic_mr"]
+        
+        ids = [str(i+1) for i in range(len(valores_ind))]
+        ids_mr = [str(i+1) for i in range(len(mr_values))]
+        
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+        
+        # Carta I (Individuais)
+        ax1.plot(ids, valores_ind, 'co-', linewidth=2, markersize=8, label='Valor Individual')
+        ax1.axhline(media_ind, color='blue', linestyle='-', linewidth=2, label='Média')
+        ax1.axhline(lsc_ind, color='red', linestyle='--', linewidth=2, label='LSC')
+        ax1.axhline(lic_ind, color='red', linestyle='--', linewidth=2, label='LIC')
+        ax1.set_title("Carta de Controle I (Valores Individuais)", fontsize=14, fontweight='bold')
+        ax1.set_ylabel("Valor")
+        ax1.legend(loc='upper right')
+        ax1.grid(True, alpha=0.3)
+        
+        # Carta MR (Moving Range)
+        ax2.plot(ids_mr, mr_values, 'yo-', linewidth=2, markersize=8, label='Moving Range')
+        ax2.axhline(mr_bar, color='blue', linestyle='-', linewidth=2, label='MR-barra')
+        ax2.axhline(lsc_mr, color='red', linestyle='--', linewidth=2, label='LSC_MR')
+        ax2.axhline(lic_mr, color='red', linestyle='--', linewidth=2, label='LIC_MR')
+        ax2.set_title("Carta de Controle MR (Moving Range)", fontsize=14, fontweight='bold')
+        ax2.set_xlabel("Amostra")
+        ax2.set_ylabel("Moving Range")
+        ax2.legend(loc='upper right')
+        ax2.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        
+        _, caminho_relatorios = Cartas.obter_caminhos()
+        temp_img = os.path.join(caminho_relatorios, "tmp_imr.png")
+        plt.savefig(temp_img, dpi=100, bbox_inches='tight')
+        plt.close()
+        
+        info = f"""Resumo da Analise IMR:
+
+Media dos Individuais: {media_ind:.4f}
+Desvio Padrao: {dados_imr['sigma_ind']:.4f}
+
+Limites de Controle I:
+  LSC = {lsc_ind:.4f}
+  LIC = {lic_ind:.4f}
+
+Moving Range Media (MR-barra): {mr_bar:.4f}
+
+Limites de Controle MR:
+  LSC_MR = {lsc_mr:.4f}
+  LIC_MR = {lic_mr:.4f}
+
+Numero de observacoes: {len(valores_ind)}
+Numero de MR: {len(mr_values)}"""
+        
+        Cartas.gerar_pdf_basico("Relatorio de Controle - Carta IMR", temp_img, "relatorio_IMR.pdf", info)
+        if os.path.exists(temp_img):
+            os.remove(temp_img)
+        return True
+    
+    @staticmethod
+    def gerar_todos_relatorios():
+        """Gera relatórios para todos os tipos de chart disponíveis."""
+        print("\n" + "="*60)
+        print("GERANDO RELATÓRIOS DE CONTROLE")
+        print("="*60 + "\n")
+        
+        todos_dados = Cartas.carregar_dados_tratados()
+        if not todos_dados:
+            print("✗ Nenhum dado tratado encontrado")
+            return False
+        
+        resultados = {"sucesso": 0, "erro": 0}
+        
+        for dados in todos_dados:
+            chart_type = dados.get("chart")
+            print(f"\n[{chart_type}] Processando...")
+            
+            try:
+                if chart_type == "XR":
+                    if Cartas.carta_xr(dados):
+                        resultados["sucesso"] += 1
+                elif chart_type == "P":
+                    if Cartas.carta_p(dados):
+                        resultados["sucesso"] += 1
+                elif chart_type == "U":
+                    if Cartas.carta_u(dados):
+                        resultados["sucesso"] += 1
+                elif chart_type == "IMR":
+                    if Cartas.carta_imr(dados):
+                        resultados["sucesso"] += 1
+                else:
+                    print(f"  ✗ Tipo não reconhecido: {chart_type}")
+                    resultados["erro"] += 1
+            except Exception as e:
+                print(f"  ✗ Erro ao processar {chart_type}: {str(e)}")
+                resultados["erro"] += 1
+        
+        print("\n" + "="*60)
+        print(f"RESULTADO: {resultados['sucesso']} sucesso(s), {resultados['erro']} erro(s)")
+        print("="*60 + "\n")
+        
+        return resultados["erro"] == 0

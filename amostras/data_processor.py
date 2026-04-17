@@ -1,129 +1,306 @@
 import json
 import math
 import os
-import scipy.stats
-from scipy.stats import norm # Importação movida para o topo
-import calculod3
+import numpy as np
+from scipy.stats import norm
+
 
 class DataProcessor:
+    """Processa dados brutos de amostras e gera dados tratados."""
+    
     def __init__(self):
         self.datasets = []
-
-    def carregar_dados(self, nome_arquivo):
-        # Ajustado para procurar na pasta 'banco_de_dados_amostras'
-        caminho_diretorio = os.path.join(os.path.dirname(__file__), 'banco_de_dados_amostras')
-        caminho_completo = os.path.join(caminho_diretorio, nome_arquivo)
+        self.dados_tratados = []
+        # Define a raiz do projeto uma única vez
+        self.raiz_projeto = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+    def carregar_dados_brutos(self, nome_arquivo):
+        """Carrega dados brutos do arquivo JSON."""
+        caminho_amostras = os.path.join(self.raiz_projeto, 'amostras', 'banco_de_dados_amostras')
+        caminho_completo = os.path.join(caminho_amostras, nome_arquivo)
         
         try:
             with open(caminho_completo, 'r', encoding='utf-8') as f:
                 conteudo = json.load(f)
                 self.datasets = conteudo if isinstance(conteudo, list) else [conteudo]
+            print(f"✓ Dados brutos carregados: {nome_arquivo}")
             return True
         except Exception as e:
-            print(f"Erro ao carregar {nome_arquivo}: {e}")
+            print(f"✗ Erro ao carregar {nome_arquivo}: {e}")
+            print(f"   Procurando em: {caminho_completo}")
             return False
-
-    def calcular_estatisticas(self, index):
-        ds = self.datasets[index]
+    
+    def processar_tipo_xr(self, ds):
+        """Processa dados para Carta XR (Médias e Amplitudes)."""
         measurements = ds.get("measurements", {})
+        if not measurements:
+            return None
+        
         lse = ds.get("Limite sup. Esp", 0)
         lie = ds.get("Limite inf. Esp", 0)
-
+        
         todas_as_medias = []
         amplitudes = []
         todos_os_valores = []
         estatisticas_por_amostra = []
-        n_amostra = 0
-
+        
         for id_amostra, valores in measurements.items():
             if valores:
-                n_amostra = len(valores) # Define n com base nos dados reais
-                media_amostra = sum(valores) / n_amostra
+                n_amostra = len(valores)
+                media_amostra = np.mean(valores)
                 amplitude_amostra = max(valores) - min(valores)
                 
                 soma_quad = sum((x - media_amostra) ** 2 for x in valores)
-                dp_amostra = math.sqrt(soma_quad / n_amostra)
-
+                dp_amostra = np.sqrt(soma_quad / n_amostra)
+                
                 estatisticas_por_amostra.append({
-                    "amostra": id_amostra,
-                    "media": media_amostra,
-                    "dp": dp_amostra,
-                    "amplitude": amplitude_amostra
+                    "amostra": str(id_amostra),
+                    "media": float(media_amostra),
+                    "dp": float(dp_amostra),
+                    "amplitude": float(amplitude_amostra),
+                    "n": n_amostra,
+                    "valores": valores
                 })
-
+                
                 todas_as_medias.append(media_amostra)
                 amplitudes.append(amplitude_amostra)
                 todos_os_valores.extend(valores)
-
+        
         if not todos_os_valores:
-            print("Nenhum dado encontrado.")
-            return
+            return None
+        
+        # Cálculos globais
+        x_double_bar = np.mean(todas_as_medias)
+        r_bar = np.mean(amplitudes)
+        sigma = np.std(todos_os_valores, ddof=0)
+        
+        # Determinar d2 baseado em n
+        n_amostra = len(valores)
+        d2_values = {
+            2: 1.128, 3: 1.693, 4: 2.059, 5: 2.326,
+            6: 2.534, 7: 2.704, 8: 2.847, 9: 2.970, 10: 3.078
+        }
+        d2 = d2_values.get(n_amostra, n_amostra / (n_amostra - 0.8) * math.sqrt(math.log(n_amostra)))
+        
+        lsc_r = r_bar * (1 + 3 * (0.864 / d2)) if d2 != 0 else 0
+        lic_r = max(0, r_bar * (1 - 3 * (0.864 / d2))) if d2 != 0 else 0
+        
+        return {
+            "chart": "XR",
+            "lse": float(lse),
+            "lie": float(lie),
+            "x_double_bar": float(x_double_bar),
+            "r_bar": float(r_bar),
+            "sigma": float(sigma),
+            "lsc_x": float(x_double_bar + 3 * sigma),
+            "lic_x": float(x_double_bar - 3 * sigma),
+            "lsc_r": float(lsc_r),
+            "lic_r": float(lic_r),
+            "n_amostra": n_amostra,
+            "estatisticas_por_amostra": estatisticas_por_amostra
+        }
+    
+    def processar_tipo_p(self, ds):
+        """Processa dados para Carta P (Proporção de Defeituosos)."""
+        measurements = ds.get("measurements", {})
+        if not measurements:
+            return None
 
-        # Salvando os resultados individuais
-        pasta_saida = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'banco_de_dados')
+        # Tamanho da amostra (número de unidades por subamostra)
+        N = ds.get("n_amostra") or ds.get("N")
+        if not N:
+            # Não há informação de tamanho de amostra
+            return None
+
+        # Extrair defeitos por amostra (cada entrada pode ser lista ou número)
+        defeitos = []
+        for k, v in measurements.items():
+            if isinstance(v, list) and len(v) > 0:
+                defeitos.append(int(v[0]))
+            elif isinstance(v, (int, float)):
+                defeitos.append(int(v))
+
+        if not defeitos:
+            return None
+
+        m = len(defeitos)
+        proporcoes = [d / N for d in defeitos]
+        P_bar = float(np.mean(proporcoes))
+        total_defeitos = sum(defeitos)
+        P_overall = total_defeitos / (N * m)
+
+        # Desvio padrão para p-chart (assumindo N constante)
+        desvio_padrao_p = float(np.sqrt((P_bar * (1 - P_bar)) / N)) if N > 0 else 0.0
+
+        lsc_P = min(1.0, P_bar + 3 * desvio_padrao_p)
+        lic_P = max(0.0, P_bar - 3 * desvio_padrao_p)
+
+        return {
+            "chart": "P",
+            "P": float(P_overall),
+            "P_bar": float(P_bar),
+            "total_defeitos": int(total_defeitos),
+            "N": int(N),
+            "desvio_padrao_p": float(desvio_padrao_p),
+            "lsc_P": float(lsc_P),
+            "lic_P": float(lic_P),
+            "proporcoes": [float(p) for p in proporcoes]
+        }
+    
+    def processar_tipo_u(self, ds):
+        """Processa dados para Carta U (Defeitos por Unidade)."""
+        measurements = ds.get("measurements", {})
+        if not measurements:
+            return None
+
+        # Unidades por amostra (número de unidades inspecionadas por subamostra)
+        n_units = ds.get("n_amostra") or ds.get("n")
+        if not n_units:
+            return None
+
+        # Extrair contagens de defeitos por amostra
+        defeitos = []
+        for k, v in measurements.items():
+            if isinstance(v, list) and len(v) > 0:
+                defeitos.append(int(v[0]))
+            elif isinstance(v, (int, float)):
+                defeitos.append(int(v))
+
+        if not defeitos:
+            return None
+
+        m = len(defeitos)
+        u_valores = [d / n_units for d in defeitos]
+        U_bar = float(np.mean(u_valores))
+
+        # Desvio padrão para u-chart (assumindo n constante)
+        dp_u = float(np.sqrt(U_bar / n_units)) if n_units > 0 else 0.0
+        lsc_u = float(U_bar + 3 * dp_u)
+        lic_u = float(max(0.0, U_bar - 3 * dp_u))
+
+        total_defeitos = sum(defeitos)
+
+        return {
+            "chart": "U",
+            "U": float(total_defeitos / (n_units * m)),
+            "U_bar": float(U_bar),
+            "total_defeitos": int(total_defeitos),
+            "n": int(n_units),
+            "desvio_padrao_u": float(dp_u),
+            "lsc_u": float(lsc_u),
+            "lic_u": float(lic_u),
+            "u_valores": [float(u) for u in u_valores]
+        }
+    
+    def processar_tipo_imr(self, ds):
+        """Processa dados para Carta IMR (Individuals and Moving Range)."""
+        measurements = ds.get("measurements", {})
+        if not measurements:
+            return None
+        
+        # Coletar todos os valores individuais
+        valores_individuais = []
+        for id_amostra, valores in measurements.items():
+            if isinstance(valores, list):
+                valores_individuais.extend(valores)
+            else:
+                valores_individuais.append(valores)
+        
+        if len(valores_individuais) < 2:
+            return None
+        
+        media_ind = np.mean(valores_individuais)
+        sigma_ind = np.std(valores_individuais, ddof=1)
+        
+        # Moving Range (amplitude móvel de 2 pontos)
+        mr_values = [abs(valores_individuais[i] - valores_individuais[i-1]) 
+                     for i in range(1, len(valores_individuais))]
+        mr_bar = np.mean(mr_values)
+        
+        # Constantes de controle
+        d2 = 1.128  # Para n=2
+        lsc_ind = media_ind + 3 * sigma_ind
+        lic_ind = media_ind - 3 * sigma_ind
+        
+        lsc_mr = mr_bar * 3.267  # D4 para n=2
+        lic_mr = max(0, mr_bar * 0)  # D3 para n=2 é 0
+        
+        return {
+            "chart": "IMR",
+            "media_ind": float(media_ind),
+            "sigma_ind": float(sigma_ind),
+            "mr_bar": float(mr_bar),
+            "lsc_ind": float(lsc_ind),
+            "lic_ind": float(lic_ind),
+            "lsc_mr": float(lsc_mr),
+            "lic_mr": float(lic_mr),
+            "valores_individuais": [float(v) for v in valores_individuais],
+            "mr_values": [float(mr) for mr in mr_values]
+        }
+    
+    def processar_dados(self):
+        """Processa todos os dados e gera dados tratados."""
+        if not self.datasets:
+            print("✗ Nenhum dataset carregado")
+            return False
+        
+        for ds in self.datasets:
+            chart_type = ds.get("chart") or ds.get("Chart")
+            
+            if chart_type == "XR":
+                dados = self.processar_tipo_xr(ds)
+            elif chart_type == "P":
+                dados = self.processar_tipo_p(ds)
+            elif chart_type == "U":
+                dados = self.processar_tipo_u(ds)
+            elif chart_type == "IMR":
+                dados = self.processar_tipo_imr(ds)
+            else:
+                print(f"✗ Tipo de chart não reconhecido: {chart_type}")
+                continue
+            
+            if dados:
+                self.dados_tratados.append(dados)
+        
+        print(f"✓ {len(self.dados_tratados)} dataset(s) processado(s)")
+        return True
+    
+    def salvar_dados_tratados(self):
+        """Salva dados tratados em banco_de_dados_tratados."""
+        # Criar pasta de destino usando raiz do projeto
+        pasta_saida = os.path.join(self.raiz_projeto, 'banco_de_dados_tratados')
+        
         if not os.path.exists(pasta_saida):
             os.makedirs(pasta_saida)
+            print(f"✓ Pasta criada: {pasta_saida}")
         
-        caminho_saida = os.path.join(pasta_saida, 'estatisticas_individuais.json')
-        with open(caminho_saida, 'w', encoding='utf-8') as f:
-            json.dump(estatisticas_por_amostra, f, indent=4)
-        print(f"Estatísticas individuais salvas em: {caminho_saida}")
-
-        # Cálculos Globais
-        x_double_bar = sum(todas_as_medias) / len(todas_as_medias)
-        r_bar = sum(amplitudes) / len(amplitudes)
-        # Sigma global (desvio padrão populacional dos dados coletados)
-        sigma = math.sqrt(sum((x - x_double_bar) ** 2 for x in todos_os_valores) / len(todos_os_valores))
-
-        # Determinação de d2
-        match n_amostra:
-            case 2: d2 = 1.128
-            case 3: d2 = 1.693
-            case 4: d2 = 2.059
-            case 5: d2 = 2.326
-            case 6: d2 = 2.534
-            case 7: d2 = 2.704
-            case 8: d2 = 2.847
-            case 9: d2 = 2.970
-            case 10: d2 = 3.078
-            case _: d2 = (n_amostra / (n_amostra - 0.8)) * math.sqrt(math.log(n_amostra))
-        
-        # Chama sua função externa para d3
-        d3 = calculod3.obter_d3(n_amostra)
-
-        # CORREÇÃO: Faltava o operador '*' e a lógica de truncamento para LIC
-        lsc_r = r_bar * (1 + 3 * (d3 / d2)) if d2 != 0 else 0
-        lic_r = max(0, r_bar * (1 - 3 * (d3 / d2))) if d2 != 0 else 0
-
-        # Probabilidade
-        try:
-            value_input = input("\nValor para verificar probabilidade (ex: 530): ")
-            if value_input:
-                value = float(value_input)
-                z = (value - x_double_bar) / sigma if sigma != 0 else 0
-                prob = norm.cdf(z) * 100
-                print(f"Probabilidade de valor <= {value}: {prob:.4f}%")
-        except ValueError:
-            print("Valor inválido para cálculo de probabilidade.")
-
-        print(f"\n--- RESULTADOS GERAIS ---")
-        print(f"X̄̄ (Média das Médias): {x_double_bar:.4f}")
-        print(f"R̄ (Média das Amplitudes): {r_bar:.4f}")
-        print(f"σ Global: {sigma:.4f}")
-        print(f"Limites de Controle para R: [LIC: {lic_r:.4f}, LSC: {lsc_r:.4f}]")
-        
-        if lse != lie:
-            cp = (lse - lie) / (6 * sigma) if sigma != 0 else 0
-            print(f"Cp (Capacidade do Processo): {cp:.4f}")
-
-    def menu_interativo(self):
-        while True:
-            print("\n--- PROCESSADOR DE DADOS ---")
-            opcao = input("Nome do arquivo JSON (ou 'sair'): ").strip()
-            if opcao.lower() == 'sair': break
+        # Salvar cada tipo de chart em arquivo separado
+        for idx, dados in enumerate(self.dados_tratados):
+            chart_type = dados.get("chart")
+            nome_arquivo = f"dados_tratados_{chart_type}_{idx}.json"
+            caminho_saida = os.path.join(pasta_saida, nome_arquivo)
             
-            if self.carregar_dados(opcao):
-                self.calcular_estatisticas(0)
+            with open(caminho_saida, 'w', encoding='utf-8') as f:
+                json.dump(dados, f, indent=4, ensure_ascii=False)
+            
+            print(f"✓ Dados tratados salvos: {nome_arquivo}")
+        
+        # Salvar também um índice com todos os dados
+        caminho_indice = os.path.join(pasta_saida, 'indice_dados.json')
+        with open(caminho_indice, 'w', encoding='utf-8') as f:
+            json.dump(self.dados_tratados, f, indent=4, ensure_ascii=False)
+        
+        print(f"✓ Índice salvo: indice_dados.json")
+        return True
+    
+    def processar_e_salvar(self, nome_arquivo):
+        """Função principal: carrega, processa e salva."""
+        if self.carregar_dados_brutos(nome_arquivo):
+            if self.processar_dados():
+                return self.salvar_dados_tratados()
+        return False
+
 
 if __name__ == "__main__":
-    DataProcessor().menu_interativo()
+    processor = DataProcessor()
+    processor.processar_e_salvar('dados_producao.json')
