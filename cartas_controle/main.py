@@ -1,13 +1,15 @@
-from Cartas import Cartas
+from cartas_controle.Cartas import Cartas
 
 class Main:
     @staticmethod
-    def main():
-
+    def x():
         x = Cartas.carta_x()
-        r = Cartas.carta_r()
         print("Processamento finalizado com sucesso.")
-        return x, r
-
+        return x
+    @staticmethod
+    def r():
+        r = Cartas.carta_x()
+        print("Processamento finalizado com sucesso.")
+        return r
 if __name__ == "__main__":
     Main.main()

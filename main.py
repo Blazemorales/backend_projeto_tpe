@@ -1,16 +1,13 @@
 import os
 from flask import Flask, send_file, jsonify
 import matplotlib
-# ESSENCIAL: Impede que o Matplotlib tente abrir uma janela no servidor
-matplotlib.use('Agg') 
-import matplotlib.pyplot as plt
 
-# Importa a função do seu arquivo data_processor.py
-from cartas_controle import main
+# Configuração para servidores Headless (sem interface gráfica)
+matplotlib.use('Agg') 
 
 app = Flask(__name__)
 
-# Define os caminhos absolutos
+# Caminhos absolutos baseados na localização deste arquivo
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PASTA_RELATORIOS = os.path.join(BASE_DIR, 'relatorios')
 
@@ -18,35 +15,54 @@ PASTA_RELATORIOS = os.path.join(BASE_DIR, 'relatorios')
 def home():
     return jsonify({
         "status": "online",
-        "projeto": "CPE - Controle Estatístico de Processo, by João Morais",
+        "projeto": "CPE - Controle Estatístico de Processo",
+        "autor": "João Morais",
         "endpoints": {
-            "gerar_pdf": "/gerar-pdf"
+            "gerar_pdf_x": "/gerarpdfx",
+            "gerar_pdf_r": "/gerarpdfr"
         }
     })
 
-@app.route('/gerar-pdf', methods=['GET'])
-def endpoint_pdf():
+@app.route('/gerarpdfx', methods=['GET'])
+def endpoint_pdf_x():
     try:
-        # Garante que a pasta de relatórios existe no servidor
-        if not os.path.exists(PASTA_RELATORIOS):
-            os.makedirs(PASTA_RELATORIOS)
-        
-        # Executa a sua lógica de cálculo e geração de gráfico
+        # Importação tardia (Lazy Import) para evitar erros de path no startup
         from cartas_controle.main import Main
-        Main.main()  # Chama a função principal
         
-        # O nome do arquivo deve ser o mesmo que você definiu na função carta_x
+        # Executa a lógica que gera os arquivos JSON e o PDF
+        Main.x()
+        
+        # O nome deve bater exatamente com o que está definido em Cartas.py
         caminho_pdf = os.path.join(PASTA_RELATORIOS, "relatorio_completo_x.pdf")
         
         if os.path.exists(caminho_pdf):
             return send_file(caminho_pdf, as_attachment=True)
         else:
-            return jsonify({"error": f"PDF nao encontrado em: {caminho_pdf}"}), 500
+            return jsonify({"error": f"PDF não encontrado no servidor."}), 404
             
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"Erro interno: {str(e)}"}), 500
+    
+@app.route('/gerarpdfr', methods=['GET'])
+def endpoint_pdf_r():
+    try:
+        # Importação tardia (Lazy Import) para evitar erros de path no startup
+        from cartas_controle.main import Main
+        
+        # Executa a lógica que gera os arquivos JSON e o PDF
+        Main.r() 
+        
+        # O nome deve bater exatamente com o que está definido em Cartas.py
+        caminho_pdf = os.path.join(PASTA_RELATORIOS, "relatorio_carta_r.pdf")
+        
+        if os.path.exists(caminho_pdf):
+            return send_file(caminho_pdf, as_attachment=True)
+        else:
+            return jsonify({"error": f"PDF não encontrado no servidor."}), 404
+            
+    except Exception as e:
+        return jsonify({"error": f"Erro interno: {str(e)}"}), 500
 
 if __name__ == "__main__":
-    # O Render usa a variável de ambiente PORT
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
