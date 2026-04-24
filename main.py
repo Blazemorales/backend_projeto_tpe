@@ -21,7 +21,8 @@ def home():
             "relatorio_xr": "/relatorio/xr",
             "relatorio_p": "/relatorio/p",
             "relatorio_u": "/relatorio/u",
-            "relatorio_imr": "/relatorio/imr"
+            "relatorio_imr": "/relatorio/imr",
+            "validar_processo": "/validarprocesso"
         }
     })
 
@@ -92,7 +93,17 @@ def relatorio_imr():
         return jsonify({"error": "PDF IMR não encontrado"}), 404
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
+@app.route('/validarprocesso', methods=['GET'])
+def validar_processo():
+    """Valida se o processo de geração de relatórios está funcionando corretamente."""
+    try:
+        from cartas_controle.main import Main
+        if Main.validar_processo():
+            return jsonify({"status": "sucesso", "message": "Processo de geração de relatórios validado com sucesso"}), 200
+        else:
+            return jsonify({"status": "erro", "message": "Falha na validação do processo de geração de relatórios"}), 500
+    except Exception as e:
+        return jsonify({"status": "erro", "message": str(e)}), 500
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)

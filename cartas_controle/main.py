@@ -1,106 +1,188 @@
 import sys
 import os
+import scipy.stats
+import numpy as np
 
-# --- CORREÇÃO DE PATH: Permite importar 'amostras' mesmo executando de dentro da pasta ---
-# Pega o caminho da pasta 'cartas_controle' e sobe um nível para a raiz 'backend_tpe_e'
+# --- CORREÇÃO DE PATH ---
 raiz_projeto = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if raiz_projeto not in sys.path:
     sys.path.append(raiz_projeto)
 
-# Agora os imports funcionam sem erro
 from Cartas import Cartas
 from amostras.data_processor import DataProcessor
 
 
 class Main:
+
     @staticmethod
     def processar_dados(arquivo_dados='dados_producao_total.json'):
-        """Processa dados brutos e gera dados tratados."""
         print("\n[ETAPA 1] Processando dados brutos...")
         processor = DataProcessor()
-        # O processor agora usa caminhos absolutos internamente
+
         if processor.processar_e_salvar(arquivo_dados):
             print("✓ Dados processados com sucesso!")
             return True
         else:
             print("✗ Erro ao processar dados")
             return False
-    
+
     @staticmethod
     def gerar_relatorios():
-        """Gera todos os relatórios de controle."""
         print("\n[ETAPA 2] Gerando relatórios...")
+
         if Cartas.gerar_todos_relatorios():
             print("✓ Relatórios gerados com sucesso!")
             return True
         else:
             print("✗ Erro ao gerar relatórios")
             return False
-    
+
     @staticmethod
     def executar_completo(arquivo_dados='dados_producao_total.json'):
-        """Executa o pipeline completo: processamento + geração de relatórios."""
-        print("\n" + "="*60)
-        print("PIPELINE COMPLETO - PROCESSAMENTO E GERAÇÃO DE RELATÓRIOS")
-        print("="*60)
-        
+        print("\n" + "=" * 60)
+        print("PIPELINE COMPLETO - PROCESSAMENTO E RELATÓRIOS")
+        print("=" * 60)
+
         if Main.processar_dados(arquivo_dados):
             if Main.gerar_relatorios():
-                print("\n" + "="*60)
+                print("\n" + "=" * 60)
                 print("✓ PROCESSO FINALIZADO COM SUCESSO!")
-                print("="*60 + "\n")
+                print("=" * 60 + "\n")
                 return True
-        
-        print("\n" + "="*60)
+
+        print("\n" + "=" * 60)
         print("✗ ERRO NO PROCESSO")
-        print("="*60 + "\n")
+        print("=" * 60 + "\n")
         return False
-    
+
     @staticmethod
     def x():
-        """Atalho para pipeline XR."""
         return Main.executar_completo()
-    
+
     @staticmethod
     def r():
-        """Gera apenas relatório R."""
         dados = Cartas.carregar_dados_tratados()
         if dados:
             dados_r = next((d for d in dados if d.get("chart") == "XR"), None)
             if dados_r:
                 return Cartas.carta_xr(dados_r)
         return False
-    
+
     @staticmethod
     def p():
-        """Gera apenas relatório P."""
         dados = Cartas.carregar_dados_tratados()
         if dados:
             dados_p = next((d for d in dados if d.get("chart") == "P"), None)
             if dados_p:
                 return Cartas.carta_p(dados_p)
         return Cartas.carta_p()
-    
+
     @staticmethod
     def u():
-        """Gera apenas relatório U."""
         dados = Cartas.carregar_dados_tratados()
         if dados:
             dados_u = next((d for d in dados if d.get("chart") == "U"), None)
             if dados_u:
                 return Cartas.carta_u(dados_u)
         return Cartas.carta_u()
-    
+
     @staticmethod
     def imr():
-        """Gera apenas relatório IMR."""
         dados = Cartas.carregar_dados_tratados()
         if dados:
             dados_imr = next((d for d in dados if d.get("chart") == "IMR"), None)
             if dados_imr:
                 return Cartas.carta_imr(dados_imr)
         return Cartas.carta_imr()
-    
+
+    # =========================
+    # ✅ VALIDAÇÃO CORRIGIDA
+    # =========================
+    @staticmethod
+    def validar_processo():
+        print("\n[VALIDAÇÃO] Validando processo...")
+
+        dados = Cartas.carregar_dados_tratados()
+        if not dados:
+            print("✗ Dados não encontrados.")
+            return False
+
+        while True:
+            ponto = input("\nDigite um valor (ou 'sair'): ")
+
+            if ponto.lower() == 'sair':
+                break
+
+            try:
+                ponto = float(ponto)
+            except ValueError:
+                print("Valor inválido.")
+                continue
+
+            for chart in ["XR", "P", "U", "IMR"]:
+
+                dados_chart = next(
+                    (d for d in dados if d.get("chart") == chart),
+                    None
+                )
+
+                if not dados_chart:
+                    continue
+
+                valores = dados_chart.get("values", [])
+                if not valores:
+                    continue
+
+                media = np.mean(valores)
+                sigma = np.std(valores)
+
+                if sigma == 0:
+                    print(f"[{chart}] ✗ Sigma = 0, impossível calcular.")
+                    continue
+
+                z = (ponto - media) / sigma
+                p = 1 - scipy.stats.norm.cdf(z)
+                cmc = 1 / p if p != 0 else float('inf')
+
+                print(f"\n[{chart}]")
+                print(f"Média: {media:.4f} | Sigma: {sigma:.4f}")
+                print(f"Z: {z:.4f} | Probabilidade: {p:.6f}")
+                print(f"CMC (ARL): {cmc:.2f}")
+
+                # Interpretação estatística
+                if p < 0.01:
+                    print("→ Baixa probabilidade → possível erro tipo II")
+                elif p > 0.1:
+                    print("→ Alta probabilidade → possível erro tipo I")
+                else:
+                    print("→ Zona aceitável")
+
+        print("\n✓ Validação concluída.")
+        return True
+
+    # =========================
+    # VALIDADORES INDIVIDUAIS
+    # =========================
+    @staticmethod
+    def validar_relatorio_xr():
+        xr = Cartas.carta_xr()
+        return xr.validar_processo() if xr else False
+
+    @staticmethod
+    def validar_relatorio_p():
+        p = Cartas.carta_p()
+        return p.validar_processo() if p else False
+
+    @staticmethod
+    def validar_relatorio_u():
+        u = Cartas.carta_u()
+        return u.validar_processo() if u else False
+
+    @staticmethod
+    def validar_relatorio_imr():
+        imr = Cartas.carta_imr()
+        return imr.validar_processo() if imr else False
+
     @staticmethod
     def main():
         Main.executar_completo()
