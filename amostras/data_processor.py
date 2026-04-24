@@ -11,23 +11,49 @@ class DataProcessor:
     def __init__(self):
         self.datasets = []
         self.dados_tratados = []
-        # Define a raiz do projeto uma única vez
-        self.raiz_projeto = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         
-    def carregar_dados_brutos(self, nome_arquivo):
-        """Carrega dados brutos do arquivo JSON."""
-        caminho_amostras = os.path.join(self.raiz_projeto, 'amostras', 'banco_de_dados_amostras')
-        caminho_completo = os.path.join(caminho_amostras, nome_arquivo)
+        # Define o diretório onde o arquivo .py atual está localizado
+        self.diretorio_script = os.path.dirname(os.path.abspath(__file__))
+        
+        # Define a raiz do projeto (um nível acima da pasta 'amostras')
+        self.raiz_projeto = os.path.dirname(self.diretorio_script)
+        
+        # Nome de arquivo padrão
+        self.nome_arquivo_padrao = 'dados_producao_total.json'
+
+    def carregar_dados_brutos(self, nome_arquivo=None):
+        """
+        Carrega dados brutos do arquivo JSON. 
+        Se nome_arquivo não for fornecido, usa o padrão definido no __init__.
+        """
+        # Se não enviou nome no argumento, usa o self.nome_arquivo_padrao
+        arquivo_para_abrir = self.nome_arquivo_padrao
+        
+        # Monta o caminho: diretorio_do_script/banco_de_dados_amostras/arquivo.json
+        caminho_completo = os.path.join(
+            self.diretorio_script, 
+            'banco_de_dados_amostras', 
+            arquivo_para_abrir
+        )
         
         try:
             with open(caminho_completo, 'r', encoding='utf-8') as f:
                 conteudo = json.load(f)
+                # Garante que datasets seja sempre uma lista
                 self.datasets = conteudo if isinstance(conteudo, list) else [conteudo]
-            print(f"✓ Dados brutos carregados: {nome_arquivo}")
+            
+            print(f"✓ Dados brutos carregados com sucesso: {arquivo_para_abrir}")
             return True
+            
+        except FileNotFoundError:
+            print(f"✗ Erro: O arquivo '{arquivo_para_abrir}' não foi encontrado.")
+            print(f"   Caminho tentado: {caminho_completo}")
+            return False
+        except json.JSONDecodeError:
+            print(f"✗ Erro: O arquivo '{arquivo_para_abrir}' não é um JSON válido.")
+            return False
         except Exception as e:
-            print(f"✗ Erro ao carregar {nome_arquivo}: {e}")
-            print(f"   Procurando em: {caminho_completo}")
+            print(f"✗ Erro inesperado ao carregar {arquivo_para_abrir}: {e}")
             return False
     
     def processar_tipo_xr(self, ds):
@@ -209,27 +235,36 @@ class DataProcessor:
         if len(valores_individuais) < 2:
             return None
         
-        media_ind = np.mean(valores_individuais)
-        sigma_ind = np.std(valores_individuais, ddof=1)
+        media_ind = 0
+        for valor in valores_individuais:
+            media_ind+=valor
+        
+        media_ind = media_ind/len(valores_individuais)
+        media_imr = media_ind
+
+        sigma_ind = 0
+        for valor in valores_individuais:
+            sigma_ind+=(valor-media_ind)**2
+        sigma_ind = math.sqrt(sigma_ind/len(valores_individuais))
+        sigma_imr = sigma_ind
         
         # Moving Range (amplitude móvel de 2 pontos)
-        mr_values = [abs(valores_individuais[i] - valores_individuais[i-1]) 
-                     for i in range(1, len(valores_individuais))]
-        mr_bar = np.mean(mr_values)
+        mr_values = [abs(valores_individuais[i] - valores_individuais[i-1]) for i in range(1, len(valores_individuais))]
+        am_bar = np.mean(mr_values)
         
         # Constantes de controle
         d2 = 1.128  # Para n=2
         lsc_ind = media_ind + 3 * sigma_ind
         lic_ind = media_ind - 3 * sigma_ind
         
-        lsc_mr = mr_bar * 3.267  # D4 para n=2
-        lic_mr = max(0, mr_bar * 0)  # D3 para n=2 é 0
+        lsc_mr = am_bar * 3.267  # D4 para n=2
+        lic_mr = max(0, am_bar * 0)  # D3 para n=2 é 0
         
         return {
             "chart": "IMR",
             "media_ind": float(media_ind),
             "sigma_ind": float(sigma_ind),
-            "mr_bar": float(mr_bar),
+            "am_bar": float(am_bar),
             "lsc_ind": float(lsc_ind),
             "lic_ind": float(lic_ind),
             "lsc_mr": float(lsc_mr),

@@ -404,7 +404,7 @@ class Cartas:
         media_ind = dados_imr["media_ind"]
         lsc_ind = dados_imr["lsc_ind"]
         lic_ind = dados_imr["lic_ind"]
-        mr_bar = dados_imr["mr_bar"]
+        am_bar = dados_imr["am_bar"]
         lsc_mr = dados_imr["lsc_mr"]
         lic_mr = dados_imr["lic_mr"]
         
@@ -425,7 +425,7 @@ class Cartas:
         
         # Carta MR (Moving Range)
         ax2.plot(ids_mr, mr_values, 'yo-', linewidth=2, markersize=8, label='Moving Range')
-        ax2.axhline(mr_bar, color='blue', linestyle='-', linewidth=2, label='MR-barra')
+        ax2.axhline(am_bar, color='blue', linestyle='-', linewidth=2, label='MR-barra')
         ax2.axhline(lsc_mr, color='red', linestyle='--', linewidth=2, label='LSC_MR')
         ax2.axhline(lic_mr, color='red', linestyle='--', linewidth=2, label='LIC_MR')
         ax2.set_title("Carta de Controle MR (Moving Range)", fontsize=14, fontweight='bold')
@@ -450,7 +450,7 @@ Limites de Controle I:
   LSC = {lsc_ind:.4f}
   LIC = {lic_ind:.4f}
 
-Moving Range Media (MR-barra): {mr_bar:.4f}
+Moving Range Media (MR-barra): {am_bar:.4f}
 
 Limites de Controle MR:
   LSC_MR = {lsc_mr:.4f}

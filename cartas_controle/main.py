@@ -1,6 +1,15 @@
-from .Cartas import Cartas
-from amostras.data_processor import DataProcessor
+import sys
 import os
+
+# --- CORREÇÃO DE PATH: Permite importar 'amostras' mesmo executando de dentro da pasta ---
+# Pega o caminho da pasta 'cartas_controle' e sobe um nível para a raiz 'backend_tpe_e'
+raiz_projeto = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if raiz_projeto not in sys.path:
+    sys.path.append(raiz_projeto)
+
+# Agora os imports funcionam sem erro
+from Cartas import Cartas
+from amostras.data_processor import DataProcessor
 
 
 class Main:
@@ -9,6 +18,7 @@ class Main:
         """Processa dados brutos e gera dados tratados."""
         print("\n[ETAPA 1] Processando dados brutos...")
         processor = DataProcessor()
+        # O processor agora usa caminhos absolutos internamente
         if processor.processar_e_salvar(arquivo_dados):
             print("✓ Dados processados com sucesso!")
             return True
@@ -48,7 +58,7 @@ class Main:
     
     @staticmethod
     def x():
-        """Gera apenas relatório XR."""
+        """Atalho para pipeline XR."""
         return Main.executar_completo()
     
     @staticmethod
@@ -69,10 +79,7 @@ class Main:
             dados_p = next((d for d in dados if d.get("chart") == "P"), None)
             if dados_p:
                 return Cartas.carta_p(dados_p)
-            else:
-                # Gera placeholder via Cartas.carta_p()
-                return Cartas.carta_p()
-        return False
+        return Cartas.carta_p()
     
     @staticmethod
     def u():
@@ -82,10 +89,17 @@ class Main:
             dados_u = next((d for d in dados if d.get("chart") == "U"), None)
             if dados_u:
                 return Cartas.carta_u(dados_u)
-            else:
-                # Gera placeholder via Cartas.carta_u()
-                return Cartas.carta_u()
-        return False
+        return Cartas.carta_u()
+    
+    @staticmethod
+    def imr():
+        """Gera apenas relatório IMR."""
+        dados = Cartas.carregar_dados_tratados()
+        if dados:
+            dados_imr = next((d for d in dados if d.get("chart") == "IMR"), None)
+            if dados_imr:
+                return Cartas.carta_imr(dados_imr)
+        return Cartas.carta_imr()
     
     @staticmethod
     def main():
