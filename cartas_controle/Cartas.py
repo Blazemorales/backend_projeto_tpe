@@ -93,6 +93,46 @@ class Cartas:
         print(f"✓ PDF gerado: {caminho_final}")
     
     @staticmethod
+    def kalman_filter(observacoes, estado_inicial, variancia_processo=None, variancia_medida=None):
+        """Filtro de Kalman 1-D (passeio aleatório) para gerar reta de tendência.
+
+        Retorna a série de estimativas a priori. Por construção, o primeiro
+        valor é igual a `estado_inicial`, garantindo que a reta comece sobre
+        a linha central da carta de controle.
+        """
+        obs = np.asarray(observacoes, dtype=float)
+        n = len(obs)
+        if n == 0:
+            return np.array([])
+
+        var_obs = float(np.var(obs)) if n > 1 else 1.0
+        if variancia_processo is None:
+            variancia_processo = max(var_obs * 0.01, 1e-9)
+        if variancia_medida is None:
+            variancia_medida = max(var_obs, 1e-9)
+
+        Q = float(variancia_processo)
+        R = float(variancia_medida)
+
+        x = float(estado_inicial)
+        P = R
+
+        a_priori = np.zeros(n)
+        for k in range(n):
+            if k == 0:
+                x_pred, P_pred = x, P
+            else:
+                x_pred = x
+                P_pred = P + Q
+            a_priori[k] = x_pred
+
+            K = P_pred / (P_pred + R)
+            x = x_pred + K * (obs[k] - x_pred)
+            P = (1.0 - K) * P_pred
+
+        return a_priori
+
+    @staticmethod
     def detectar_alertas_montgomery(medias, x_double_bar, sigma):
         """Aplica as 4 regras de Montgomery para pontos fora de controle."""
         n = len(medias)
@@ -182,11 +222,16 @@ class Cartas:
         # --- Carta X (Médias) ---
         ax1.plot(ids, medias, 'b-', alpha=0.5)
         ax1.plot(ids, medias, 'bo', markersize=6, label='Média')
-        
+
+        # Reta de tendência (Filtro de Kalman) começando na linha central
+        kalman_x = Cartas.kalman_filter(medias, x_double_bar)
+        ax1.plot(ids, kalman_x, color='darkorange', linestyle='--', linewidth=2,
+                 label='Tendência (Kalman)')
+
         # Destacar Alertas
         indices_alerta = [i for i, v in enumerate(alertas) if v]
         if indices_alerta:
-            ax1.plot([ids[i] for i in indices_alerta], [medias[i] for i in indices_alerta], 
+            ax1.plot([ids[i] for i in indices_alerta], [medias[i] for i in indices_alerta],
                      'ro', markersize=10, label='Causa Especial (Montgomery)')
 
         # Linhas de Controle e Zonas
@@ -205,6 +250,9 @@ class Cartas:
         
         # --- Carta R (Amplitude) ---
         ax2.plot(ids, amplitudes, 'ro-', linewidth=1, markersize=6, label='Amplitude (R)')
+        kalman_r = Cartas.kalman_filter(amplitudes, r_bar)
+        ax2.plot(ids, kalman_r, color='darkorange', linestyle='--', linewidth=2,
+                 label='Tendência (Kalman)')
         ax2.axhline(r_bar, color='green', label='R-barra')
         ax2.axhline(lsc_r, color='red', linestyle='--', label='LSC_R')
         ax2.axhline(lic_r, color='red', linestyle='--', label='LIC_R')
@@ -291,6 +339,9 @@ class Cartas:
         
         plt.figure(figsize=(12, 6))
         plt.plot(ids, proporcoes, 'go-', linewidth=2, markersize=8, label='Proporção')
+        kalman_p = Cartas.kalman_filter(proporcoes, P_bar)
+        plt.plot(ids, kalman_p, color='darkorange', linestyle='--', linewidth=2,
+                 label='Tendência (Kalman)')
         plt.axhline(P_bar, color='blue', linestyle='-', linewidth=2, label='P-barra')
         plt.axhline(lsc_P, color='red', linestyle='--', linewidth=2, label='LSC')
         plt.axhline(lic_P, color='red', linestyle='--', linewidth=2, label='LIC')
@@ -354,6 +405,9 @@ class Cartas:
         
         plt.figure(figsize=(12, 6))
         plt.plot(ids, u_valores, 'mo-', linewidth=2, markersize=8, label='u (Defeitos/Unidade)')
+        kalman_u = Cartas.kalman_filter(u_valores, U_bar)
+        plt.plot(ids, kalman_u, color='darkorange', linestyle='--', linewidth=2,
+                 label='Tendência (Kalman)')
         plt.axhline(U_bar, color='blue', linestyle='-', linewidth=2, label='U-barra')
         plt.axhline(lsc_u, color='red', linestyle='--', linewidth=2, label='LSC')
         plt.axhline(lic_u, color='red', linestyle='--', linewidth=2, label='LIC')
@@ -415,6 +469,9 @@ class Cartas:
         
         # Carta I (Individuais)
         ax1.plot(ids, valores_ind, 'co-', linewidth=2, markersize=8, label='Valor Individual')
+        kalman_i = Cartas.kalman_filter(valores_ind, media_ind)
+        ax1.plot(ids, kalman_i, color='darkorange', linestyle='--', linewidth=2,
+                 label='Tendência (Kalman)')
         ax1.axhline(media_ind, color='blue', linestyle='-', linewidth=2, label='Média')
         ax1.axhline(lsc_ind, color='red', linestyle='--', linewidth=2, label='LSC')
         ax1.axhline(lic_ind, color='red', linestyle='--', linewidth=2, label='LIC')
@@ -425,6 +482,9 @@ class Cartas:
         
         # Carta MR (Moving Range)
         ax2.plot(ids_mr, mr_values, 'yo-', linewidth=2, markersize=8, label='Moving Range')
+        kalman_mr = Cartas.kalman_filter(mr_values, am_bar)
+        ax2.plot(ids_mr, kalman_mr, color='darkorange', linestyle='--', linewidth=2,
+                 label='Tendência (Kalman)')
         ax2.axhline(am_bar, color='blue', linestyle='-', linewidth=2, label='MR-barra')
         ax2.axhline(lsc_mr, color='red', linestyle='--', linewidth=2, label='LSC_MR')
         ax2.axhline(lic_mr, color='red', linestyle='--', linewidth=2, label='LIC_MR')
