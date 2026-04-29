@@ -8,7 +8,7 @@ raiz_projeto = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if raiz_projeto not in sys.path:
     sys.path.append(raiz_projeto)
 
-from Cartas import Cartas
+from cartas_controle.Cartas import Cartas
 from amostras.data_processor import DataProcessor
 
 
