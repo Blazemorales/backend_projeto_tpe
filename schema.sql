@@ -36,15 +36,5 @@ CREATE TABLE IF NOT EXISTS resultados (
 CREATE INDEX IF NOT EXISTS resultados_user_chart_recente_idx
     ON resultados(user_id, chart, gerado_em DESC);
 
--- Migração in-place da tabela antiga "relatorios" (se existir).
--- Mantém comportamento idempotente: aplica só se a tabela já existia
--- com o esquema antigo.
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1 FROM information_schema.tables
-        WHERE table_name = 'relatorios'
-    ) THEN
-        DROP TABLE IF EXISTS relatorios CASCADE;
-    END IF;
-END $$;
+-- Migração: a tabela antiga "relatorios" foi substituída por "resultados".
+DROP TABLE IF EXISTS relatorios CASCADE;
