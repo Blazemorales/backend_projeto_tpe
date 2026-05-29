@@ -1,15 +1,20 @@
-# Next.js 16 multi-stage build.
+# Next.js 16 multi-stage build com pnpm.
 # Usamos node:22-slim (Debian) em vez de alpine para evitar surpresas com
 # o binário do SWC em musl; o trade-off é ~80MB a mais por imagem.
 
+# Imagem base com pnpm pré-instalado para reuso entre stages.
+FROM node:22-slim AS base
+RUN npm install -g pnpm@10.33.0 && \
+    pnpm config set store-dir /pnpm-store
+
 # ── Stage 1: deps ──────────────────────────────────────────────────────
-FROM node:22-slim AS deps
+FROM base AS deps
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile --prod=false
 
 # ── Stage 2: builder ───────────────────────────────────────────────────
-FROM node:22-slim AS builder
+FROM base AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 # URL pública do backend (Socket.IO + REST). Inlinada pelo Next no build.
@@ -17,10 +22,10 @@ ARG NEXT_PUBLIC_SOCKET_URL=http://localhost:8000
 ENV NEXT_PUBLIC_SOCKET_URL=$NEXT_PUBLIC_SOCKET_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+RUN pnpm build
 
 # ── Stage 3: runner ────────────────────────────────────────────────────
-FROM node:22-slim AS runner
+FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
@@ -38,4 +43,4 @@ COPY --from=builder --chown=nextjs:nextjs /app/package.json ./package.json
 USER nextjs
 EXPOSE 3000
 
-CMD ["npm", "run", "start"]
+CMD ["pnpm", "start"]
