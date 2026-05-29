@@ -5,7 +5,7 @@ services:
     plan: free
     region: oregon
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn backend_api:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn backend_api:asgi --host 0.0.0.0 --port $PORT
     healthCheckPath: /
     envVars:
       - key: PYTHON_VERSION
@@ -18,3 +18,5 @@ services:
         value: "60"
       - key: ALLOWED_ORIGINS
         value: "https://cep-by-j-morais.vercel.app,http://localhost:3000"
+      - key: RPI_DEVICE_TOKEN
+        sync: false

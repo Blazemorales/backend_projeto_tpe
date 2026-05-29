@@ -13,19 +13,15 @@ from auth import (
 )
 from Login.async_model import AsyncDBUserManager, get_db_dsn_from_env
 from cep_routes import router as cep_router, set_db_manager
+from realtime import ALLOWED_ORIGINS, make_asgi_app, sio  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 
-# Lista explícita de origens permitidas (CORS). Defina `ALLOWED_ORIGINS`
-# separado por vírgula em prod; em dev cai para localhost.
-_DEFAULT_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000"
-ALLOWED_ORIGINS = [
-    o.strip()
-    for o in os.environ.get("ALLOWED_ORIGINS", _DEFAULT_ORIGINS).split(",")
-    if o.strip()
-]
+# `ALLOWED_ORIGINS` (CORS) vem de realtime.py — fonte única, lida da var de
+# ambiente `ALLOWED_ORIGINS` (separada por vírgula; cai para localhost em dev).
+# É compartilhada entre o middleware HTTP e o servidor Socket.IO.
 
 dsn = get_db_dsn_from_env()
 if not dsn:
@@ -101,7 +97,13 @@ async def health_db():
         raise HTTPException(status_code=503, detail=f"db unreachable: {e}")
 
 
+# ASGI combinado: FastAPI (HTTP/REST) + Socket.IO (tempo real) no mesmo
+# processo/porta. O Socket.IO atende em `/socket.io/`; o resto vai pro FastAPI.
+# É este objeto (`asgi`) que o uvicorn deve servir — ver Procfile/render.yaml.
+asgi = make_asgi_app(app)
+
+
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(asgi, host="0.0.0.0", port=8000)
