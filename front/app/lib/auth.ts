@@ -31,7 +31,11 @@ function sign(payload: string, secret: string): string {
 
 export function createSessionToken(username: string, secret: string): string {
   const issuedAt = Math.floor(Date.now() / 1000);
-  const payload = `${encodeURIComponent(username)}.${issuedAt}`;
+  // encodeURIComponent NÃO codifica ".", então usernames com ponto (ex.: "joao.silva")
+  // gerariam tokens com partes extras ao dar split(".") na verificação. Forçamos %2E
+  // para o "." continuar sendo separador inequívoco.
+  const encodedUser = encodeURIComponent(username).replace(/\./g, "%2E");
+  const payload = `${encodedUser}.${issuedAt}`;
   const signature = sign(payload, secret);
   return `${payload}.${signature}`;
 }
@@ -41,9 +45,16 @@ export function verifySessionToken(
   secret: string,
 ): { username: string; issuedAt: number; expiresAt: number } | null {
   if (!token) return null;
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  const [encUser, issuedAtStr, signature] = parts;
+  // Usa lastIndexOf em vez de split(".") para tolerar tokens antigos cujo encUser
+  // ainda contém pontos não codificados (retrocompatível). issuedAt e a assinatura
+  // hex nunca têm ponto, então os dois últimos "." delimitam o payload com segurança.
+  const dotIndex = token.lastIndexOf(".");
+  if (dotIndex === -1) return null;
+  const sigDotIndex = token.lastIndexOf(".", dotIndex - 1);
+  if (sigDotIndex === -1) return null;
+  const encUser = token.slice(0, sigDotIndex);
+  const issuedAtStr = token.slice(sigDotIndex + 1, dotIndex);
+  const signature = token.slice(dotIndex + 1);
 
   const issuedAt = Number.parseInt(issuedAtStr, 10);
   if (!Number.isFinite(issuedAt)) return null;
