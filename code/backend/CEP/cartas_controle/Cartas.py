@@ -237,7 +237,9 @@ class Cartas:
         ids = [s["amostra"] for s in stats]
         
         x_double_bar = dados_xr["x_double_bar"]
-        sigma = dados_xr["sigma"]
+        sigma = dados_xr["sigma"]  # erro padrão da média (limites X = x_bb ± 3*sigma = ± A2*r_bar)
+        # sigma do processo (individuais), estimado por r_bar/d2 — usado em capacidade.
+        sigma_ind = dados_xr.get("sigma_individual", sigma)
         r_bar = dados_xr["r_bar"]
         lsc_r, lic_r = dados_xr["lsc_r"], dados_xr["lic_r"]
         
@@ -299,25 +301,29 @@ class Cartas:
         for i in indices_alerta:
             txt_alertas += f"Amostra {ids[i]}: {', '.join(motivos[i])}\n"
 
-        # --- Cálculo da RCP (razão de controle de processo) ---
-        # Usa limites de especificação (lse/lie) se existirem no dado tratado.
+        # --- Capacidade do processo (fórmula 16-21): Cpk = min[(LSE-μ)/3σ, (μ-LIE)/3σ] ---
+        # Usa o sigma dos INDIVIDUAIS (r_bar/d2) e os limites de especificação se existirem.
         lse = dados_xr.get("lse")
         lie = dados_xr.get("lie")
-        rcp = None
-        rcp_msg = "RCP não calculado: limites de especificação ausentes."
+        rcp = None  # mantém o nome "rcp" usado no relatório, agora = Cpk
+        rcp_msg = "Cpk não calculado: limites de especificação ausentes."
         try:
-            if lse is not None and lie is not None and sigma and sigma > 0:
-                rcp = (lse - lie) / (6.0 * sigma)
-                # Interpretação simples baseada em Montgomery (Cp ~ razão capacidade)
+            spec_ok = lse is not None and lie is not None and (lse != 0 or lie != 0)
+            if spec_ok and sigma_ind and sigma_ind > 0:
+                cpu = (lse - x_double_bar) / (3.0 * sigma_ind)
+                cpl = (x_double_bar - lie) / (3.0 * sigma_ind)
+                rcp = min(cpu, cpl)  # Cpk
                 tol = 1e-6
-                if rcp > 1.0 + tol:
-                    rcp_msg = "RCP > 1: Processo capaz — está tranquilo."
+                if rcp >= 1.33 - tol:
+                    rcp_msg = "Cpk >= 1.33: Processo capaz, com folga."
+                elif rcp > 1.0 + tol:
+                    rcp_msg = "Cpk > 1: Processo capaz, mas com pouca folga."
                 elif abs(rcp - 1.0) <= tol:
-                    rcp_msg = "RCP = 1: Pode haver possibilidade de produtos com defeitos."
+                    rcp_msg = "Cpk = 1: No limite — possibilidade de produtos defeituosos."
                 else:
-                    rcp_msg = "RCP < 1: Altas chances de produtos defeituosos."
+                    rcp_msg = "Cpk < 1: Processo incapaz — altas chances de defeitos."
         except Exception:
-            rcp_msg = "Erro ao calcular RCP." 
+            rcp_msg = "Erro ao calcular Cpk."
 
         rcp_str = f"{rcp:.6f}" if rcp is not None else "N/A"
 
@@ -339,11 +345,12 @@ class Cartas:
     {txt_alertas if txt_alertas else 'Nenhum ponto fora de controle detectado.'}
 
     {bloco_kalman}
-    RCP (Razão de Controle de Processo): {rcp_str}
+    Cpk (Capacidade do Processo): {rcp_str}
     Interpretação: {rcp_msg}
     """
         Cartas.gerar_pdf_basico("Relatorio de Controle Estatistico - Montgomery", temp_img, "relatorio_XR.pdf", info)
-        if os.path.exists(temp_img): os.remove(temp_img)
+        if os.path.exists(temp_img) and not os.environ.get("CEP_KEEP_PNG"):
+            os.remove(temp_img)
         return True
     
     @staticmethod
@@ -416,7 +423,7 @@ class Cartas:
     Numero de amostras: {len(proporcoes)}"""
 
         Cartas.gerar_pdf_basico("Relatorio de Controle - Carta P", temp_img, "relatorio_P.pdf", info)
-        if os.path.exists(temp_img):
+        if os.path.exists(temp_img) and not os.environ.get("CEP_KEEP_PNG"):
             os.remove(temp_img)
         return True
     
@@ -490,7 +497,7 @@ class Cartas:
     Numero de amostras: {len(u_valores)}"""
 
         Cartas.gerar_pdf_basico("Relatorio de Controle - Carta U", temp_img, "relatorio_U.pdf", info)
-        if os.path.exists(temp_img):
+        if os.path.exists(temp_img) and not os.environ.get("CEP_KEEP_PNG"):
             os.remove(temp_img)
         return True
     
@@ -584,7 +591,7 @@ Numero de observacoes: {len(valores_ind)}
 Numero de MR: {len(mr_values)}"""
         
         Cartas.gerar_pdf_basico("Relatorio de Controle - Carta IMR", temp_img, "relatorio_IMR.pdf", info)
-        if os.path.exists(temp_img):
+        if os.path.exists(temp_img) and not os.environ.get("CEP_KEEP_PNG"):
             os.remove(temp_img)
         return True
     

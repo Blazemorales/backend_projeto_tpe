@@ -3,7 +3,7 @@ venv/
 .env.*
 !.env.example
 __pycache__/
-
+.claude/
 # Node / Next.js (frontend será adicionado no PR 2)
 node_modules/
 .next/
@@ -19,4 +19,9 @@ node_modules/
 .mypy_cache/
 .ruff_cache/
 *.egg-info/
+
+# Saídas geradas pelo módulo CEP (entrega/relatórios temporários)
+code/backend/CEP/relatorios/tmp_*.png
+code/backend/CEP/entrega_tmp/
+code/backend/CEP/*.zip
 

@@ -47,7 +47,7 @@ class ServerThread:
     """Roda o uvicorn num thread, sem lifespan (não toca no banco)."""
 
     def __init__(self):
-        import backend_api
+        import code.backend.backend_api as backend_api
 
         # Desliga o lifespan p/ não exigir Postgres no teste.
         backend_api.app.router.lifespan_context = _noop_lifespan

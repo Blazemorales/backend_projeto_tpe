@@ -38,7 +38,7 @@ def processar_para_usuario(amostras: Iterable[dict]) -> dict[str, dict]:
     """Recebe lista de payloads (formato do upload original) e devolve
     `{chart: dados_tratados}`.
     """
-    from CEP.amostras.data_processor import DataProcessor
+    from code.backend.CEP.amostras.data_processor import DataProcessor
 
     processor = DataProcessor()
     processor.datasets = list(amostras)
@@ -68,7 +68,7 @@ def gerar_pdf_para(chart: str, dados_tratados: Optional[dict]) -> bytes:
     """Gera o PDF da carta `chart` e retorna como bytes, sem deixar
     arquivos para trás.
     """
-    from CEP.cartas_controle.Cartas import Cartas
+    from code.backend.CEP.cartas_controle.Cartas import Cartas
 
     chart = chart.upper()
     if chart not in _CARTA_TO_PDF:

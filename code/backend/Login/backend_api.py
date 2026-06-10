@@ -6,14 +6,14 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from auth import (
+from code.backend.auth import (
     create_access_token,
     get_current_user,
     set_db as set_auth_db,
 )
-from Login.async_model import AsyncDBUserManager, get_db_dsn_from_env
-from cep_routes import router as cep_router, set_db_manager
-from realtime import (  # noqa: F401
+from code.backend.Login.async_model import AsyncDBUserManager, get_db_dsn_from_env
+from code.backend.cep_routes import router as cep_router, set_db_manager
+from code.backend.realtime import (  # noqa: F401
     ALLOWED_ORIGINS,
     make_asgi_app,
     set_db as set_realtime_db,

@@ -9,8 +9,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from auth import get_current_user
-from cep_pipeline import (
+from code.backend.auth import get_current_user
+from code.backend.cep_pipeline import (
     gerar_pdf_para,
     normalizar_payload_upload,
     processar_para_usuario,

@@ -4,6 +4,20 @@ import os
 import numpy as np
 from scipy.stats import norm
 
+# Tabela de constantes A2/D3/D4/d2 (fonte unica). Tenta o import de pacote e,
+# em execucao standalone, cai para o arquivo irmao em ../constantes.py.
+try:
+    from code.backend.CEP.constantes import constantes as _constantes
+except Exception:  # pragma: no cover - fallback para execucao direta
+    import importlib.util
+    _const_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "constantes.py"
+    )
+    _spec = importlib.util.spec_from_file_location("cep_constantes", _const_path)
+    _mod = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    _constantes = _mod.constantes
+
 
 class DataProcessor:
     """Processa dados brutos de amostras e gera dados tratados."""
@@ -98,28 +112,44 @@ class DataProcessor:
         # Cálculos globais
         x_double_bar = np.mean(todas_as_medias)
         r_bar = np.mean(amplitudes)
-        sigma = np.std(todos_os_valores, ddof=0)
-        
-        # Determinar d2 baseado em n
-        n_amostra = len(valores)
-        d2_values = {
-            2: 1.128, 3: 1.693, 4: 2.059, 5: 2.326,
-            6: 2.534, 7: 2.704, 8: 2.847, 9: 2.970, 10: 3.078
-        }
-        d2 = d2_values.get(n_amostra, n_amostra / (n_amostra - 0.8) * math.sqrt(math.log(n_amostra)))
-        
-        lsc_r = r_bar * (1 + 3 * (0.864 / d2)) if d2 != 0 else 0
-        lic_r = max(0, r_bar * (1 - 3 * (0.864 / d2))) if d2 != 0 else 0
-        
+
+        # Tamanho do subgrupo (assume n constante; usa o mais frequente).
+        tamanhos = [s["n"] for s in estatisticas_por_amostra]
+        n_amostra = int(max(set(tamanhos), key=tamanhos.count)) if tamanhos else len(valores)
+
+        # Constantes tabeladas para este n (fórmulas 16-9 e 16-12).
+        A2, D3, D4, d2 = _constantes(n_amostra)
+
+        # Sigma do PROCESSO (individuais) estimado pelo alcance: sigma_hat = r_bar/d2.
+        # Usado em capacidade e cálculos probabilísticos.
+        sigma_individual = (r_bar / d2) if d2 else 0.0
+
+        # Sigma da MÉDIA do subgrupo (erro padrão): sigma_xbar = sigma_hat/sqrt(n)
+        # = A2*r_bar/3. Guardado em "sigma" para que x_bb ± 3*sigma == x_bb ± A2*r_bar,
+        # mantendo coerentes os limites, as zonas 1/2/3-sigma e as regras de Montgomery.
+        sigma_xbar = (A2 * r_bar / 3.0) if r_bar else 0.0
+
+        # Carta X (16-9)
+        lsc_x = x_double_bar + A2 * r_bar
+        lic_x = x_double_bar - A2 * r_bar
+        # Carta R (16-12)
+        lsc_r = D4 * r_bar
+        lic_r = D3 * r_bar
+
         return {
             "chart": "XR",
             "lse": float(lse),
             "lie": float(lie),
             "x_double_bar": float(x_double_bar),
             "r_bar": float(r_bar),
-            "sigma": float(sigma),
-            "lsc_x": float(x_double_bar + 3 * sigma),
-            "lic_x": float(x_double_bar - 3 * sigma),
+            "sigma": float(sigma_xbar),
+            "sigma_individual": float(sigma_individual),
+            "A2": float(A2),
+            "D3": float(D3),
+            "D4": float(D4),
+            "d2": float(d2),
+            "lsc_x": float(lsc_x),
+            "lic_x": float(lic_x),
             "lsc_r": float(lsc_r),
             "lic_r": float(lic_r),
             "n_amostra": n_amostra,
@@ -242,28 +272,32 @@ class DataProcessor:
         media_ind = media_ind/len(valores_individuais)
         media_imr = media_ind
 
-        sigma_ind = 0
-        for valor in valores_individuais:
-            sigma_ind+=(valor-media_ind)**2
-        sigma_ind = math.sqrt(sigma_ind/len(valores_individuais))
-        sigma_imr = sigma_ind
-        
         # Moving Range (amplitude móvel de 2 pontos)
         mr_values = [abs(valores_individuais[i] - valores_individuais[i-1]) for i in range(1, len(valores_individuais))]
         am_bar = np.mean(mr_values)
-        
-        # Constantes de controle
-        d2 = 1.128  # Para n=2
+
+        # Constantes para n=2 (par usado no moving range).
+        _, D3, D4, d2 = _constantes(2)
+
+        # Carta I (16-19): sigma estimado pelo alcance móvel, sigma_hat = am_bar/d2,
+        # NÃO o desvio amostral dos individuais.
+        sigma_ind = (am_bar / d2) if d2 else 0.0
+        sigma_imr = sigma_ind
         lsc_ind = media_ind + 3 * sigma_ind
         lic_ind = media_ind - 3 * sigma_ind
-        
-        lsc_mr = am_bar * 3.267  # D4 para n=2
-        lic_mr = max(0, am_bar * 0)  # D3 para n=2 é 0
+
+        # Carta MR: LSC = D4*am_bar, LIC = D3*am_bar (D3=0 para n=2).
+        lsc_mr = D4 * am_bar
+        lic_mr = max(0.0, D3 * am_bar)
         
         return {
             "chart": "IMR",
+            "lse": float(ds.get("Limite sup. Esp", 0)),
+            "lie": float(ds.get("Limite inf. Esp", 0)),
             "media_ind": float(media_ind),
             "sigma_ind": float(sigma_ind),
+            "sigma_individual": float(sigma_ind),
+            "d2": float(d2),
             "am_bar": float(am_bar),
             "lsc_ind": float(lsc_ind),
             "lic_ind": float(lic_ind),
